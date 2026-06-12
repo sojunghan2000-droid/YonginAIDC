@@ -5,7 +5,7 @@ import streamlit as st
 
 from lib import data
 from lib.floor_map import make_floor_figure
-from lib.ui import badge, fmt_date, page_header, render_kpi_row
+from lib.ui import TASK_STATUS_KO, badge, fmt_date, page_header, render_kpi_row
 from pages_app.floor_map import FLOOR_ORDER, _render_grid
 
 
@@ -20,12 +20,14 @@ def _summary_tab() -> None:
     """탭 1 — 기존 대시보드 요약 (KPI + 별지5 + 예정 태스크)."""
     eq_kpi = data.equipment_kpis()
     tk_kpi = data.task_kpis()
+    action_rate = data.notice_action_rate()
 
     render_kpi_row([
         ("전체 시설", f"{eq_kpi['total']:,}", f"이번 달 +{eq_kpi['new_this_month']}건", "default"),
         ("미조치 항목", f"{eq_kpi['pending_issues']}", "긴급 점검 알림", "alert"),
         ("지연 태스크", f"{tk_kpi['overdue']}", "즉시 조치 필요", "alert"),
-        ("QR 적용률", f"{eq_kpi['qr_coverage']:.1f}%", "QR 부착률", "default"),
+        ("작업 조치율", f"{action_rate:.1f}%" if action_rate is not None else "—",
+         "조치 완료 / 발급 통보서", "default"),
     ])
 
     st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
@@ -82,7 +84,7 @@ def _summary_tab() -> None:
             "<tr style='border-bottom:1px solid #F1F5F9;'>"
             f"<td style='padding:0.6rem 0.3rem; color:#0F172A; font-weight:600;'>{t.equipment_label}</td>"
             f"<td style='padding:0.6rem 0.3rem; color:#334155;'>{fmt_date(t.due_date)}</td>"
-            f"<td style='padding:0.6rem 0.3rem;'>{badge(t.status)}</td>"
+            f"<td style='padding:0.6rem 0.3rem;'>{badge(TASK_STATUS_KO.get(t.status, t.status))}</td>"
             "</tr>"
             for t in upcoming
         )
@@ -171,7 +173,7 @@ def _detail_tab() -> None:
 def render() -> None:
     page_header(
         "대시보드",
-        "용인덕성 AI DC 소방안전 점검 통합 현황 · 2026-05-27.",
+        f"용인덕성 AI DC 소방안전 점검 통합 현황 · {data.TODAY.isoformat()}.",
     )
 
     tab_summary, tab_grid, tab_detail = st.tabs(

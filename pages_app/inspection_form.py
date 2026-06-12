@@ -69,11 +69,13 @@ def _render_action_card(notice: Notice, focus: bool) -> None:
             if not action_note.strip():
                 st.error("조치 내용을 입력해 주세요.")
                 return
-            notice.action_done = True
-            notice.action_at = action_at
-            notice.action_note = action_note.strip()
-            notice.action_photo = photo.getvalue() if photo else None
-            notice.confirmer = confirmer
+            data.complete_notice_action(
+                notice.notice_no,
+                action_at=action_at,
+                action_note=action_note.strip(),
+                confirmer=confirmer,
+                photo=photo.getvalue() if photo else None,
+            )
             st.session_state.pop("focus_notice", None)
             st.session_state.pop("action_target_notice", None)
             st.success(
@@ -227,7 +229,7 @@ def _render_new_inspection(eq_all) -> None:
                 action_photo=photo_bytes,
             ))
 
-        new_def_id = f"D-NEW-{len(st.session_state.get('added_deficiencies', [])) + 1}"
+        new_def_id = data.next_deficiency_id()
         add_deficiency(Deficiency(
             deficiency_id=new_def_id,
             inspection_date=inspect_date,

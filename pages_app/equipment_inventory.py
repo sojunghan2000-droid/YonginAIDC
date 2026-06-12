@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from lib import data
+from lib.data import TASK_INSPECTION_TYPES
+from lib.inspection_dialog import equipment_dialog
 from lib.qr import make_qr, payload_for, qr_png_bytes, sticker_sheet_pdf
 from lib.ui import badge, fmt_date, page_header, render_kpi_row
 
@@ -62,6 +64,32 @@ def _qr_dialog(equipment_id: str) -> None:
         st.code(payload_for(eq), language="text")
 
     st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='color:#64748B; font-size:0.85rem; font-weight:600;'>"
+        "이 장비에 적용 가능한 점검 유형</div>"
+        "<div style='color:#94A3B8; font-size:0.78rem; margin-bottom:0.3rem;'>"
+        "점검 일정 등록 시 이 목록을 기준으로 자동 필터됩니다.</div>",
+        unsafe_allow_html=True,
+    )
+    types_key = f"qr_dlg_types_{eq.equipment_id}"
+    # session_state에 키가 없을 때만 현재 값으로 초기화 (편집 중 유지)
+    if types_key not in st.session_state:
+        st.session_state[types_key] = list(eq.inspection_types or [])
+    edited_types = st.multiselect(
+        "적용 점검 유형",
+        options=TASK_INSPECTION_TYPES,
+        key=types_key,
+        label_visibility="collapsed",
+        placeholder="적용 가능한 점검 유형 선택",
+    )
+    # dialog 안에서는 st.rerun()이 모달을 닫으므로 즉시 저장하고 toast/메시지로 안내
+    if set(edited_types) != set(eq.inspection_types or []):
+        if st.button("점검 유형 저장", use_container_width=True,
+                     key=f"qr_dlg_save_types_{eq.equipment_id}"):
+            data.set_equipment_inspection_types(eq.equipment_id, edited_types)
+            st.success("점검 유형 저장 완료. 점검 일정 등록 시 즉시 반영됩니다.")
+
+    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
     dl_col, go_col = st.columns(2)
     with dl_col:
         st.download_button(
@@ -95,9 +123,14 @@ def render() -> None:
             "시설 관리",
             "전 층 소방안전 시설 자산의 실시간 현황과 QR 부착 상태를 관리합니다.",
         )
+    eq_btn_clicked = False
     with action_col:
         b1, b2 = st.columns(2)
         with b1:
+            if st.button("신규 장비 등록", type="primary",
+                         use_container_width=True, key="open_new_equipment"):
+                eq_btn_clicked = True
+        with b2:
             st.download_button(
                 "QR 스티커 일괄 출력",
                 data=sticker_sheet_pdf(eq),
@@ -105,12 +138,16 @@ def render() -> None:
                 mime="application/pdf",
                 use_container_width=True,
             )
-        with b2:
-            st.button("신규 장비 등록", type="primary", use_container_width=True)
+
+    if st.session_state.pop("just_submitted_equipment", False):
+        st.success("새 장비가 등록되었습니다. 테이블에서 QR을 확인하고 라벨을 인쇄하세요.")
+
+    if eq_btn_clicked:
+        equipment_dialog()
 
     render_kpi_row([
         ("전체 시설", f"{kpi['total']:,}", f"이번 달 +{kpi['new_this_month']}건", "default"),
-        ("최근 점검", f"{kpi['recently_inspected']:,}", "지난 48시간", "default"),
+        ("최근 점검 (지난 48시간)", f"{kpi['recently_inspected']:,}", "", "default"),
         ("미조치 항목", f"{kpi['pending_issues']}", "긴급 점검 알림", "alert"),
         ("QR 적용률", f"{kpi['qr_coverage']:.1f}%", "QR 부착률", "default"),
     ])

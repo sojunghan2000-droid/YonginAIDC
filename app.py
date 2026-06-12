@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from lib import auth
 from lib.ui import apply_theme, render_sidebar, render_topbar
 from pages_app import (
     dashboard,
@@ -16,6 +17,8 @@ from pages_app import (
     report_center,
     floor_map,
     field_mobile,
+    login,
+    settings,
 )
 
 st.set_page_config(
@@ -26,6 +29,12 @@ st.set_page_config(
 )
 
 apply_theme()
+
+# 로그인 게이트 — 미로그인 시 로그인 화면만 표시.
+# URL의 ?eq= (QR 딥링크)는 그대로 유지되므로 로그인 후 아래 분기에서 처리된다.
+if not auth.current_user():
+    login.render()
+    st.stop()
 
 if "page" not in st.session_state:
     st.session_state["page"] = "dashboard"
@@ -52,6 +61,7 @@ PAGE_RENDERERS = {
     "reports": report_center.render,
     "floor_map": floor_map.render,
     "field": field_mobile.render,
+    "settings": settings.render,
 }
 
 PAGE_RENDERERS.get(active, dashboard.render)()

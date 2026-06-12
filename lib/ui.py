@@ -47,44 +47,12 @@ THEME_CSS = """
         letter-spacing: -0.01em;
         flex-shrink: 0;
     }
-    .ps-topbar-nav {
-        display: flex; align-items: center; gap: 1.5rem;
-        margin-left: 1.5rem;
-    }
-    .ps-topbar-nav a {
-        color: #334155; font-size: 0.95rem; font-weight: 500;
-        text-decoration: none; padding: 0.4rem 0.2rem;
-        border-bottom: 2px solid transparent;
-        transition: color 0.15s, border-color 0.15s;
-    }
-    .ps-topbar-nav a:hover { color: #2563EB; }
-    .ps-topbar-nav a.active { color: #1D4ED8; border-bottom-color: #2563EB; font-weight: 600; }
     .ps-topbar-spacer { flex: 1; }
-    .ps-topbar-search {
-        width: 320px;
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-radius: 10px;
-        height: 40px;
-        display: flex; align-items: center;
-        padding: 0 0.9rem;
-        gap: 0.55rem;
-        transition: border-color 0.15s, background 0.15s;
-    }
-    .ps-topbar-search:focus-within {
-        background: #FFFFFF;
-        border-color: #2563EB;
-    }
-    .ps-topbar-search svg { color: #94A3B8; flex-shrink: 0; }
-    .ps-topbar-search input {
-        flex: 1; border: none; background: transparent; outline: none;
-        font-size: 0.92rem; color: #0F172A;
-        font-family: inherit;
-    }
-    .ps-topbar-search input::placeholder { color: #94A3B8; }
     .ps-topbar-actions {
         display: flex; align-items: center; gap: 0.75rem;
         flex-shrink: 0;
+        /* 아바타 팝오버(.st-key-avatar_menu) 자리 확보 */
+        margin-right: 52px;
     }
     .ps-icon-btn {
         width: 38px; height: 38px;
@@ -101,17 +69,26 @@ THEME_CSS = """
         width: 8px; height: 8px; border-radius: 50%;
         background: #EF4444; border: 2px solid #FFFFFF;
     }
-    .ps-avatar {
-        width: 40px; height: 40px;
+    /* 아바타 메뉴 — st.popover를 상단바 우측에 고정 배치 */
+    .st-key-avatar_menu {
+        position: fixed; top: 12px; right: 1.75rem;
+        z-index: 9001;
+        width: 40px;
+    }
+    .st-key-avatar_menu button[data-testid="stPopoverButton"] {
+        width: 40px; height: 40px; min-height: 40px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #60A5FA, #2563EB);
-        color: #FFFFFF;
-        display: inline-flex; align-items: center; justify-content: center;
-        font-weight: 700; font-size: 0.95rem;
-        margin-left: 0.25rem;
-        cursor: pointer;
-        border: 2px solid #FFFFFF;
+        background: linear-gradient(135deg, #60A5FA, #2563EB) !important;
+        color: #FFFFFF !important;
+        font-weight: 700; font-size: 0.9rem;
+        border: 2px solid #FFFFFF !important;
         box-shadow: 0 0 0 1px #E2E8F0;
+        padding: 0 !important;
+        justify-content: center;
+    }
+    .st-key-avatar_menu button[data-testid="stPopoverButton"] svg,
+    .st-key-avatar_menu button[data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
+        display: none;
     }
     /* 사이드바를 topbar 아래로 밀어내기 */
     section[data-testid="stSidebar"] { margin-top: 64px; }
@@ -231,6 +208,20 @@ THEME_CSS = """
     }
     body.ps-sidebar-mini section[data-testid="stSidebar"] button p,
     body.ps-sidebar-mini section[data-testid="stSidebar"] button [data-testid="stMarkdownContainer"] {
+        text-align: center !important;
+    }
+    /* 사이드바 «/» 토글 버튼은 우측 정렬 유지 — Streamlit이 st.button(key=) 마다
+       부여하는 .st-key-{key} 클래스로 타겟 (ps-sb-toggle div는 sibling으로 흩어짐) */
+    section[data-testid="stSidebar"] .st-key-sb_toggle button > div {
+        justify-content: flex-end !important;
+        text-align: right !important;
+    }
+    section[data-testid="stSidebar"] .st-key-sb_toggle button p,
+    section[data-testid="stSidebar"] .st-key-sb_toggle button [data-testid="stMarkdownContainer"] {
+        text-align: right !important;
+    }
+    body.ps-sidebar-mini section[data-testid="stSidebar"] .st-key-sb_toggle button > div {
+        justify-content: center !important;
         text-align: center !important;
     }
     section[data-testid="stSidebar"] button[kind="primary"] {
@@ -395,16 +386,8 @@ def apply_theme() -> None:
 def render_topbar(active_page: str = "dashboard") -> None:
     html = """
 <div class="ps-topbar">
-    <div class="ps-topbar-brand">용인덕성 AI DC</div>
+    <div class="ps-topbar-brand">Samsung C&amp;T</div>
     <div class="ps-topbar-spacer"></div>
-    <div class="ps-topbar-search">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="11" cy="11" r="7"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-        <input type="text" placeholder="Search Assets..." />
-    </div>
     <div class="ps-topbar-actions">
         <div class="ps-icon-btn" title="Notifications">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -422,11 +405,45 @@ def render_topbar(active_page: str = "dashboard") -> None:
                 <line x1="12" y1="17" x2="12.01" y2="17"></line>
             </svg>
         </div>
-        <div class="ps-avatar">JH</div>
     </div>
 </div>
 """
     st.markdown(html, unsafe_allow_html=True)
+    _render_avatar_menu()
+
+
+def _render_avatar_menu() -> None:
+    """상단바 우측 아바타 — 클릭 시 계정 메뉴 팝오버.
+
+    상단바는 정적 HTML이라 그 안에 Streamlit 위젯을 둘 수 없으므로,
+    팝오버를 본문에 렌더한 뒤 CSS(position: fixed)로 아바타 자리에 올린다.
+    """
+    from lib import auth
+
+    user = auth.current_user()
+    if not user:
+        return
+    with st.container(key="avatar_menu"):
+        with st.popover(auth.avatar_initials()):
+            role_label = "관리자" if user["role"] == "admin" else "일반 사용자"
+            st.markdown(
+                f"<div style='font-weight:700; color:#0F172A;'>{user['name']}</div>"
+                f"<div style='color:#64748B; font-size:0.82rem; margin-bottom:0.6rem;'>"
+                f"{user['username']} · {role_label}</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("개인정보 변경", key="menu_profile", use_container_width=True):
+                st.session_state["page"] = "settings"
+                st.session_state["settings_tab"] = "profile"
+                st.rerun()
+            if auth.is_admin():
+                if st.button("사용자 관리", key="menu_admin", use_container_width=True):
+                    st.session_state["page"] = "settings"
+                    st.session_state["settings_tab"] = "admin"
+                    st.rerun()
+            if st.button("로그아웃", key="menu_logout", use_container_width=True):
+                auth.sign_out()
+                st.rerun()
 
 
 # ---------- Sidebar ----------
@@ -465,7 +482,7 @@ def render_sidebar(active: str) -> str:
         st.markdown(
             """
             <div class="ps-sb-brand" style="font-size:1.25rem; font-weight:700; color:#2563EB; line-height:1.2; margin-bottom:0.2rem;">PyroSafe</div>
-            <div class="ps-sb-sub" style="color:#64748B; font-size:0.85rem; margin-bottom:1.25rem;">용인덕성 AI DC · Inspection Mgmt</div>
+            <div class="ps-sb-sub" style="color:#64748B; font-size:0.85rem; margin-bottom:1.25rem;">용인덕성 AI DC</div>
             """,
             unsafe_allow_html=True,
         )
@@ -529,8 +546,20 @@ BADGE_CLASS = {
     "In Progress": "badge-progress",
     "Overdue": "badge-overdue",
     "Completed": "badge-completed",
+    "예정": "badge-scheduled",
+    "진행 중": "badge-progress",
+    "지연": "badge-overdue",
+    "작업 완료": "badge-completed",
     "완료": "badge-pass",
     "불가": "badge-fail",
+}
+
+# 점검 작업 상태 영문 → 한글 표시 매핑 (data 모델의 값은 영문 그대로 유지)
+TASK_STATUS_KO = {
+    "Scheduled": "예정",
+    "In Progress": "진행 중",
+    "Overdue": "지연",
+    "Completed": "작업 완료",
 }
 
 

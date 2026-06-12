@@ -106,12 +106,13 @@ def render() -> None:
         if not action_note.strip():
             st.error("조치 내용을 입력해 주세요.")
             return
-        # notice 객체 mutation (시드/세션 양쪽 모두 같은 인스턴스를 가리키므로 반영됨)
-        notice.action_done = True
-        notice.action_at = action_at
-        notice.action_note = action_note.strip()
-        notice.action_photo = photo.getvalue() if photo else None
-        notice.confirmer = confirmer
+        data.complete_notice_action(
+            notice.notice_no,
+            action_at=action_at,
+            action_note=action_note.strip(),
+            confirmer=confirmer,
+            photo=photo.getvalue() if photo else None,
+        )
         st.success(
             f"통보서 {notice.notice_no} 조치 완료가 등록되었습니다. "
             "지적 관리 · 보고서 별지6에 즉시 반영됩니다."

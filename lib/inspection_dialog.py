@@ -4,14 +4,32 @@
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import streamlit as st
 
 from lib import data
-from lib.data import Deficiency, Malfunction, Notice, add_deficiency, add_malfunction, add_notice, next_notice_no
+from lib.data import (
+    Deficiency, Equipment, InspectionTask, Malfunction, Notice,
+    TASK_INSPECTION_TYPES,
+    add_deficiency, add_equipment, add_malfunction, add_notice, add_task,
+    default_inspection_types_for,
+    next_equipment_id, next_location_id, next_notice_no, next_serial,
+    next_task_id,
+)
 from lib.qr import make_qr, payload_for
 from lib.ui import badge
+
+
+# 시설 카테고리 (소화기·소화전·감지기 등) — Equipment.category 에서 사용
+EQ_CATEGORIES = [
+    "소화기", "간이소화장치", "비상경보장치", "가스누설경보기",
+    "간이피난유도선", "방화포", "감지기", "발신기", "수신기",
+    "확산소화기", "유도등", "스프링클러", "소화전", "기타",
+]
+
+# 등록 가능한 층
+EQ_FLOORS = ["B3", "B2", "B1", "P4", "L1", "L2", "2F", "4F", "5F", "6F", "SRV"]
 
 
 INSPECTION_TYPES = ["임시소방시설", "피난로 등", "화기취급감독"]
@@ -142,7 +160,7 @@ def new_inspection_dialog() -> None:
                 action_photo=photo_bytes,
             ))
 
-        new_def_id = f"D-NEW-{len(st.session_state.get('added_deficiencies', [])) + 1}"
+        new_def_id = data.next_deficiency_id()
         add_deficiency(Deficiency(
             deficiency_id=new_def_id,
             inspection_date=inspect_date, inspector=inspector,
@@ -153,6 +171,12 @@ def new_inspection_dialog() -> None:
             confirmer=confirmer if (result == "양호" or action_immediate) else None,
             notice_no=new_no,
         ))
+
+        # 장비의 최근 점검일·건강 상태 갱신 (KPI 카드 즉시 반영)
+        data.record_equipment_inspection(
+            eq.equipment_id, inspect_date,
+            "PASS" if result == "양호" else "FAIL",
+        )
 
         # 모달 닫기 (rerun으로 페이지 갱신)
         st.session_state.pop("inspect_target", None)
@@ -206,7 +230,7 @@ def malfunction_dialog() -> None:
             st.error("조치 결과를 입력해 주세요.")
             return
 
-        new_id = f"M-NEW-{len(st.session_state.get('added_malfunctions', [])) + 1}"
+        new_id = data.next_malfunction_id()
         add_malfunction(Malfunction(
             malfunction_id=new_id,
             category=category,  # type: ignore[arg-type]
@@ -216,4 +240,248 @@ def malfunction_dialog() -> None:
             confirmer=confirmer,
         ))
         st.session_state["just_submitted_malfunction"] = True
+        st.rerun()
+
+
+@st.dialog("신규 장비 등록", width="large")
+def equipment_dialog() -> None:
+    """시설 마스터에 신규 장비를 등록. 등록 후 QR 모달은 자동 노출하지 않고
+    시설 관리 테이블에 즉시 반영 (사용자가 테이블에서 QR 버튼 클릭)."""
+    st.markdown(
+        "<div style='color:#64748B; font-size:0.88rem; margin-bottom:0.5rem;'>"
+        "새 소방시설을 시설 마스터에 등록합니다. 등록 즉시 QR이 발급되며, "
+        "테이블에서 'QR' 버튼으로 미리보기 / PNG 다운로드 가능."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # 자동 생성 ID/시리얼 (입력 전 미리 계산)
+    auto_eid = next_equipment_id()
+    auto_serial = next_serial()
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        category = st.selectbox("카테고리", options=EQ_CATEGORIES, key="eq_dlg_cat")
+    with c2:
+        equipment_name = st.text_input(
+            "장비명",
+            placeholder="예: ABC Extinguisher (5kg)",
+            key="eq_dlg_name",
+        )
+
+    c3, c4, c5 = st.columns([1, 1, 1.4])
+    with c3:
+        floor = st.selectbox("층", options=EQ_FLOORS, key="eq_dlg_floor")
+    with c4:
+        zone = st.text_input("구역", placeholder="예: SEC4", key="eq_dlg_zone")
+    with c5:
+        serial = st.text_input(
+            "시리얼 번호 (자동 + 수정 가능)",
+            value=auto_serial,
+            key="eq_dlg_serial",
+        )
+
+    # 카테고리 변경 시 점검 유형 기본값을 새로 채움 (사용자가 명시 수정 전까지)
+    cat_default_types = default_inspection_types_for(category)
+    last_cat = st.session_state.get("eq_dlg_last_cat")
+    if last_cat != category:
+        st.session_state["eq_dlg_types"] = cat_default_types
+        st.session_state["eq_dlg_last_cat"] = category
+
+    insp_types = st.multiselect(
+        "적용 점검 유형 (카테고리 기본값 자동 채움, 수정 가능)",
+        options=TASK_INSPECTION_TYPES,
+        key="eq_dlg_types",
+        placeholder="이 장비에 적용 가능한 점검 유형을 선택",
+    )
+
+    # 자동 생성 영역 (정보 표시용)
+    location_preview = next_location_id(floor, zone.strip()) if zone.strip() else "—"
+    st.markdown(
+        "<div style='background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; "
+        "padding:0.7rem 0.95rem; color:#475569; font-size:0.88rem; line-height:1.6;'>"
+        f"<b>장비 ID</b> · {auto_eid} &nbsp;|&nbsp; "
+        f"<b>위치 ID</b> · {location_preview}<br>"
+        f"<b>초기 상태</b> · {badge('DUE')} {badge('ASSIGNED')} (미점검 · QR 발급됨)<br>"
+        f"<b>도면 좌표</b> · 기본 (50, 50) — 추후 도면에서 편집 예정"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if st.button("등록 + QR 발급", type="primary", use_container_width=True,
+                 key="eq_dlg_submit"):
+        if not equipment_name.strip():
+            st.error("장비명을 입력해 주세요.")
+            return
+        if not zone.strip():
+            st.error("구역을 입력해 주세요.")
+            return
+        if not serial.strip():
+            st.error("시리얼 번호를 입력해 주세요.")
+            return
+
+        # 시리얼 중복 검증
+        existing_serials = {e.serial for e in data.load_equipment()}
+        if serial.strip() in existing_serials:
+            st.error(
+                f"시리얼 번호 '{serial.strip()}' 가 이미 사용 중입니다. "
+                "다른 번호를 입력하거나 자동 발급된 번호를 그대로 사용하세요."
+            )
+            return
+
+        new_eq = Equipment(
+            equipment_id=auto_eid,
+            location_id=location_preview,
+            category=category,  # type: ignore[arg-type]
+            equipment_name=equipment_name.strip(),
+            serial=serial.strip(),
+            qr_status="ASSIGNED",
+            last_inspection=None,
+            health_status="DUE",
+            floor=floor,
+            zone=zone.strip(),
+            pixel_x=50.0,
+            pixel_y=50.0,
+            inspection_types=list(insp_types),
+        )
+        add_equipment(new_eq)
+        st.session_state["just_submitted_equipment"] = True
+        # 다음 모달 진입 시 기본값 재초기화 (다른 카테고리 선택 시 다시 반영되도록)
+        st.session_state.pop("eq_dlg_last_cat", None)
+        st.rerun()
+
+
+@st.dialog("신규 점검 일정 등록", width="large")
+def task_dialog() -> None:
+    """점검 유형을 선택하면 해당 유형에 적용 가능한 장비들이 후보로 필터링되고,
+    선택한 장비 N개에 대해 동일 담당자·마감일·메모로 Task N개를 일괄 생성."""
+    st.markdown(
+        "<div style='color:#64748B; font-size:0.88rem; margin-bottom:0.5rem;'>"
+        "점검 유형 선택 → 해당 유형 적용 장비가 후보로 자동 필터됩니다. "
+        "선택한 장비마다 별도의 점검 일정(TSK)이 생성됩니다."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    type_options = TASK_INSPECTION_TYPES + ["기타"]
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        type_choice = st.selectbox(
+            "점검 유형",
+            options=type_options,
+            key="task_dlg_type",
+        )
+    with c2:
+        custom_type = ""
+        if type_choice == "기타":
+            custom_type = st.text_input(
+                "점검 유형 직접 입력",
+                key="task_dlg_type_custom",
+                placeholder="예: 화기취급감독",
+            )
+        else:
+            st.markdown(
+                "<div style='color:#94A3B8; font-size:0.83rem; padding-top:1.7rem;'>"
+                "장비 마스터의 inspection_types에서 매칭</div>",
+                unsafe_allow_html=True,
+            )
+
+    resolved_type = (custom_type.strip() if type_choice == "기타" else type_choice)
+
+    # 점검 유형 → 적용 가능 장비 후보 필터
+    all_eq = data.load_equipment()
+    if type_choice == "기타":
+        candidates = all_eq  # 기타는 전체에서 자유 선택
+    else:
+        candidates = [e for e in all_eq if resolved_type in (e.inspection_types or [])]
+
+    eq_indices = list(range(len(candidates)))
+
+    # 점검 유형이 바뀌면 multiselect 선택 초기화
+    last_type = st.session_state.get("task_dlg_last_type")
+    if last_type != type_choice:
+        st.session_state["task_dlg_eq_idxs"] = []
+        st.session_state["task_dlg_last_type"] = type_choice
+
+    # dialog 안에서는 st.rerun()이 모달을 닫아버리므로 session_state만 세팅하고
+    # Streamlit의 자동 rerun에 맡긴다. (별지6과 다른 점)
+    sel_col, clr_col = st.columns(2)
+    with sel_col:
+        if st.button("모두 선택", key="task_dlg_select_all",
+                     use_container_width=True,
+                     disabled=not eq_indices):
+            st.session_state["task_dlg_eq_idxs"] = list(eq_indices)
+    with clr_col:
+        if st.button("일괄 해제", key="task_dlg_clear_all",
+                     use_container_width=True):
+            st.session_state["task_dlg_eq_idxs"] = []
+
+    sel_idxs = st.multiselect(
+        f"대상 장비 (이 유형 해당 {len(candidates)}건 후보)",
+        options=eq_indices,
+        format_func=lambda i: (
+            f"{candidates[i].location_id} · {candidates[i].equipment_name}"
+        ),
+        key="task_dlg_eq_idxs",
+        placeholder="장비를 선택하세요 (여러 건 선택 가능)",
+    )
+    selected_eqs = [candidates[i] for i in sel_idxs]
+
+    # 공유 입력 (담당자·마감일·메모)
+    c_a, c_b = st.columns([1, 1])
+    with c_a:
+        assignee = st.text_input(
+            "담당자",
+            key="task_dlg_assignee",
+            placeholder="예: 박소방 (빈 값이면 '미지정')",
+        )
+    with c_b:
+        default_due = data.TODAY + timedelta(days=14)
+        due_date = st.date_input(
+            "마감일",
+            value=default_due,
+            key="task_dlg_due",
+        )
+
+    note = st.text_area(
+        "메모(선택)",
+        key="task_dlg_note",
+        placeholder="다중 등록 시 모든 일정에 동일 메모로 적용됩니다.",
+        height=80,
+    )
+
+    if due_date < data.TODAY:
+        st.warning("마감일이 오늘 이전입니다. 과거 일정 보정용이면 그대로 등록 가능합니다.")
+
+    n_sel = len(selected_eqs)
+    submit_label = f"등록 ({n_sel}건)" if n_sel else "장비를 1건 이상 선택하세요"
+    if st.button(submit_label, type="primary",
+                 use_container_width=True,
+                 key="task_dlg_submit",
+                 disabled=(n_sel == 0)):
+        if not resolved_type:
+            st.error("점검 유형을 선택(또는 입력)해 주세요.")
+            return
+
+        created_ids: list[str] = []
+        assignee_value = assignee.strip() or "Unassigned"
+        for eq in selected_eqs:
+            tsk_id = next_task_id()  # 매 호출마다 +1 (세션 누적 반영)
+            add_task(InspectionTask(
+                task_id=tsk_id,
+                equipment_label=f"{eq.location_id} - {eq.equipment_name}",
+                task_type=resolved_type,
+                assignee=assignee_value,
+                due_date=due_date,
+                status="Scheduled",
+                floor=eq.floor,
+                zone=eq.zone,
+                note=note.strip(),
+            ))
+            created_ids.append(tsk_id)
+
+        st.session_state["just_submitted_tasks"] = created_ids
+        # 다음 모달 진입 시 입력 초기화 위해 키 제거
+        for k in ("task_dlg_last_type", "task_dlg_eq_idxs"):
+            st.session_state.pop(k, None)
         st.rerun()

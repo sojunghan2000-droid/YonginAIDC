@@ -155,26 +155,16 @@ def _build_pdf_byeolji5() -> bytes:
 
 # ---------- 별지6 안전점검 조치 결과 통보서 ----------
 
-def _build_pdf_byeolji6(notice=None) -> bytes:
-    """별지6 통보서 PDF. notice를 지정하면 그 통보서, 미지정 시 최신 1건."""
+def _byeolji6_table(notice):
+    """단일 통보서를 표현하는 ReportLab Table 1개를 반환.
+    합본 PDF 구성 시 통보서 사이에 PageBreak()를 삽입해 이어붙인다."""
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4  # noqa: F401 (col width 단위 정합)
     from reportlab.lib.units import mm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+    from reportlab.platypus import Paragraph, Table, TableStyle
 
     s = _styles()
-    buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=15 * mm, rightMargin=15 * mm,
-        topMargin=15 * mm, bottomMargin=15 * mm,
-    )
-
     COL_W = [22 * mm, 38 * mm, 60 * mm, 60 * mm]  # 180mm 합
-
-    if notice is None:
-        notices = data.load_notices()
-        notice = notices[0] if notices else None
 
     n = notice
     notice_no = n.notice_no if n else ""
@@ -215,7 +205,7 @@ def _build_pdf_byeolji6(notice=None) -> bytes:
 
     # row 3: 데이터 + 조치 결과 사진 (있으면 임베드)
     if n:
-        photo_cell = _photo_image(n.action_photo, max_w_mm=58, max_h_mm=70)
+        photo_cell = _photo_image(data.get_action_photo(n), max_w_mm=58, max_h_mm=70)
         if photo_cell is None:
             photo_cell = Paragraph("사진첨부", s["cell"])
         rows.append([
@@ -263,9 +253,38 @@ def _build_pdf_byeolji6(notice=None) -> bytes:
 
     main = Table(rows, colWidths=COL_W, rowHeights=row_heights)
     main.setStyle(TableStyle(style_cmds))
+    return main
 
-    doc.build([main])
+
+def _build_pdf_byeolji6_multi(notices) -> bytes:
+    """여러 통보서를 한 PDF에 페이지별로 이어붙여 출력. notices가 비면
+    빈 PDF (단건 함수와 동일한 안전 동작)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.platypus import PageBreak, SimpleDocTemplate
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=15 * mm, rightMargin=15 * mm,
+        topMargin=15 * mm, bottomMargin=15 * mm,
+    )
+    flowables = []
+    items = list(notices) if notices else [None]
+    for idx, n in enumerate(items):
+        flowables.append(_byeolji6_table(n))
+        if idx < len(items) - 1:
+            flowables.append(PageBreak())
+    doc.build(flowables)
     return buf.getvalue()
+
+
+def _build_pdf_byeolji6(notice=None) -> bytes:
+    """별지6 통보서 PDF (단건). notice 미지정 시 최신 1건."""
+    if notice is None:
+        notices = data.load_notices()
+        notice = notices[0] if notices else None
+    return _build_pdf_byeolji6_multi([notice])
 
 
 # ---------- 별지9 소방시설 오동작 관리대장 ----------
@@ -438,22 +457,64 @@ def render() -> None:
                 f"{n.notice_no} · {n.floor}/{n.zone} · {n.issue[:18]}"
                 for n in done
             ]
-            sel_idx = st.selectbox(
-                "통보서 선택 (조치 완료된 항목만)",
-                options=range(len(opts)),
+            all_indices = list(range(len(opts)))
+
+            # 모두 선택 / 일괄 해제 버튼
+            sel_col, clr_col = st.columns(2)
+            with sel_col:
+                if st.button("모두 선택", key="notice_select_all",
+                             use_container_width=True):
+                    st.session_state["notice_multiselect"] = all_indices
+                    st.rerun()
+            with clr_col:
+                if st.button("일괄 해제", key="notice_clear_all",
+                             use_container_width=True):
+                    st.session_state["notice_multiselect"] = []
+                    st.rerun()
+
+            # default 인자는 key 사용 시 무시되며 경고가 나므로 생략.
+            # 모두 선택/일괄 해제 버튼이 session_state["notice_multiselect"]를 직접 세팅.
+            sel_idxs = st.multiselect(
+                "통보서 선택 (조치 완료된 항목만, 다중 선택 가능)",
+                options=all_indices,
                 format_func=lambda i: opts[i],
-                key="notice_select",
+                key="notice_multiselect",
                 label_visibility="collapsed",
+                placeholder="통보서를 선택하세요 (여러 건 선택 가능)",
             )
-            sel_notice = done[sel_idx]
-            st.download_button(
-                f"Download {sel_notice.notice_no}",
-                data=_build_pdf_byeolji6(sel_notice),
-                file_name=f"별지 6. 안전점검 조치 결과 통보서 ({sel_notice.notice_no}).pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary",
-            )
+            sel_notices = [done[i] for i in sel_idxs]
+
+            n_sel = len(sel_notices)
+            if n_sel == 0:
+                st.button(
+                    "통보서를 선택하면 다운로드 가능",
+                    use_container_width=True,
+                    disabled=True,
+                    key="notice_dl_disabled",
+                )
+            elif n_sel == 1:
+                only = sel_notices[0]
+                st.download_button(
+                    f"Download {only.notice_no}",
+                    data=_build_pdf_byeolji6(only),
+                    file_name=f"별지 6. 안전점검 조치 결과 통보서 ({only.notice_no}).pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                    key="notice_dl_single",
+                )
+            else:
+                today = data.TODAY.isoformat()
+                st.download_button(
+                    f"Download {n_sel}건 합본 PDF",
+                    data=_build_pdf_byeolji6_multi(sel_notices),
+                    file_name=f"별지 6. 안전점검 조치 결과 통보서 (합본 {n_sel}건, {today}).pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                    key="notice_dl_multi",
+                )
+
             if pending:
                 st.markdown(
                     f"<div style='color:#94A3B8; font-size:0.78rem; margin-top:0.3rem;'>"
