@@ -8,7 +8,7 @@ import streamlit as st
 from lib import data
 from lib.data import Deficiency, Notice, add_deficiency, add_notice, next_notice_no
 from lib.qr import make_qr, payload_for
-from lib.ui import badge, fmt_date, page_header
+from lib.ui import badge, fmt_date, page_header, photo_input
 
 
 INSPECTION_TYPES = ["임시소방시설", "피난로 등", "화기취급감독"]
@@ -33,10 +33,10 @@ def _render_action_card(notice: Notice, focus: bool) -> None:
             unsafe_allow_html=True,
         )
 
-        photo = st.file_uploader(
+        photo = photo_input(
             "조치 결과 사진",
-            type=["jpg", "jpeg", "png"],
             key=f"act_photo_{notice.notice_no}",
+            help_text="휴대폰·태블릿에서는 카메라 촬영 탭으로 즉시 촬영 가능합니다.",
         )
         if photo:
             st.image(photo, width=240)
@@ -181,10 +181,10 @@ def _render_new_inspection(eq_all) -> None:
                 placeholder="예: 적재물 이동, 흡연자에게 중단 요청 등",
                 key="action_note_now",
             )
-            action_photo_now = st.file_uploader(
+            action_photo_now = photo_input(
                 "조치 사진 (선택)",
-                type=["jpg", "jpeg", "png"],
                 key="action_photo_now",
+                help_text="휴대폰·태블릿에서는 카메라 촬영 탭으로 즉시 촬영 가능합니다.",
             )
             resolution = "완료"
         else:

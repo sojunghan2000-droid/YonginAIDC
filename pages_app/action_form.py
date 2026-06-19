@@ -6,7 +6,7 @@ from datetime import date
 import streamlit as st
 
 from lib import data
-from lib.ui import badge, fmt_date, page_header
+from lib.ui import badge, fmt_date, page_header, photo_input
 
 
 def _find_notice(notice_no: str):
@@ -71,10 +71,10 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    photo = st.file_uploader(
+    photo = photo_input(
         "조치 결과 사진",
-        type=["jpg", "jpeg", "png"],
         key=f"action_photo_{notice.notice_no}",
+        help_text="휴대폰·태블릿에서는 카메라 촬영 탭으로 즉시 촬영 가능합니다.",
     )
     if photo:
         st.image(photo, width=240)

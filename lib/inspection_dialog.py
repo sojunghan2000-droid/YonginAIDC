@@ -18,7 +18,7 @@ from lib.data import (
     next_equipment_id, next_notice_no, next_serial, next_task_id,
 )
 from lib.qr import make_qr, payload_for
-from lib.ui import badge
+from lib.ui import badge, photo_input
 
 
 # 시설 카테고리 (소화기·소화전·감지기 등) — Equipment.category 에서 사용
@@ -120,10 +120,10 @@ def new_inspection_dialog() -> None:
                 placeholder="예: 적재물 이동, 흡연자에게 중단 요청 등",
                 key="dlg_action_note",
             )
-            action_photo_now = st.file_uploader(
+            action_photo_now = photo_input(
                 "조치 사진 (선택)",
-                type=["jpg", "jpeg", "png"],
                 key="dlg_action_photo",
+                help_text="휴대폰·태블릿에서는 카메라 촬영 탭으로 즉시 촬영 가능합니다.",
             )
         else:
             st.markdown(

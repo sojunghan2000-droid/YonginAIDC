@@ -584,6 +584,42 @@ TASK_STATUS_KO = {
 }
 
 
+# ---------- 사진 입력 (파일 업로드 + 카메라 촬영) ----------
+
+def photo_input(label: str, key: str,
+                accept_types: list[str] | None = None,
+                help_text: str | None = None):
+    """조치 사진용 사진 입력. 파일 업로드 / 카메라 촬영 두 탭으로 제공.
+    카메라 촬영본이 있으면 그것을, 없으면 업로드 파일을 반환.
+    반환 객체는 .getvalue()로 bytes를 얻을 수 있는 UploadedFile 호환."""
+    if accept_types is None:
+        accept_types = ["jpg", "jpeg", "png"]
+
+    st.markdown(
+        f"<div style='font-size:0.88rem; color:#475569; font-weight:600; "
+        f"margin-bottom:0.25rem;'>{label}</div>"
+        + (f"<div style='color:#94A3B8; font-size:0.78rem; "
+           f"margin-bottom:0.3rem;'>{help_text}</div>" if help_text else ""),
+        unsafe_allow_html=True,
+    )
+    tab_file, tab_cam = st.tabs(["파일 업로드", "카메라 촬영"])
+    with tab_file:
+        uploaded = st.file_uploader(
+            label,
+            type=accept_types,
+            key=f"{key}_file",
+            label_visibility="collapsed",
+        )
+    with tab_cam:
+        camera = st.camera_input(
+            label,
+            key=f"{key}_camera",
+            label_visibility="collapsed",
+        )
+    # 카메라 촬영본 우선 (가장 최근 입력으로 가정)
+    return camera if camera is not None else uploaded
+
+
 def badge(text: str) -> str:
     cls = BADGE_CLASS.get(text, "badge-scheduled")
     return f'<span class="badge {cls}">{text}</span>'
