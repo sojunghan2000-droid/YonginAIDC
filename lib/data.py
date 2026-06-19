@@ -402,6 +402,34 @@ def next_spot_id(floor: str) -> str:
     return f"{prefix}{max_n + 1:03d}"
 
 
+def location_id_from_spot(spot_id: str) -> str:
+    """spot_id에서 사용자 가시 location_id를 파생. 형식 '{floor}-{nn}'.
+    예: 'SPOT-1F-003' → '1F-03', 'SPOT-Roof-012' → 'Roof-12'.
+    spot 형식이 아닌 경우 spot_id를 그대로 반환 (하위 호환)."""
+    parts = spot_id.split("-")
+    if len(parts) < 3 or parts[0] != "SPOT":
+        return spot_id
+    floor = parts[1]
+    try:
+        num = int(parts[-1])
+    except ValueError:
+        return spot_id
+    return f"{floor}-{num:02d}"
+
+
+def update_equipment_location(equipment_id: str, spot: Spot) -> None:
+    """장비의 위치(spot)를 변경. spot 좌표·층·zone·location_id를 일괄 갱신."""
+    _db().table("equipment").update({
+        "spot_id": spot.spot_id,
+        "floor": spot.floor,
+        "zone": spot.room_name,
+        "location_id": location_id_from_spot(spot.spot_id),
+        "pixel_x": spot.x_pct,
+        "pixel_y": spot.y_pct,
+    }).eq("equipment_id", equipment_id).execute()
+    _equipment_rows.clear()
+
+
 def set_equipment_inspection_types(equipment_id: str, types: list[str]) -> None:
     """장비의 적용 점검 유형을 갱신."""
     _db().table("equipment").update(

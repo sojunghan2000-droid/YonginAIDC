@@ -14,8 +14,8 @@ from lib.data import (
     TASK_INSPECTION_TYPES,
     add_deficiency, add_equipment, add_malfunction, add_notice, add_task,
     default_inspection_types_for,
-    next_equipment_id, next_location_id, next_notice_no, next_serial,
-    next_task_id,
+    location_id_from_spot,
+    next_equipment_id, next_notice_no, next_serial, next_task_id,
 )
 from lib.qr import make_qr, payload_for
 from lib.ui import badge
@@ -331,7 +331,7 @@ def equipment_dialog() -> None:
 
     # 자동 생성 영역 (정보 표시용)
     if sel_spot:
-        loc_preview = f"{sel_spot.floor}-{sel_spot.spot_id.split('-')[-1]}"
+        loc_preview = location_id_from_spot(sel_spot.spot_id)
         loc_html = (
             f"<b>위치 ID</b> · {loc_preview} &nbsp;|&nbsp; "
             f"<b>spot</b> · {sel_spot.room_name} ({sel_spot.spot_id})<br>"
@@ -370,9 +370,8 @@ def equipment_dialog() -> None:
             return
 
         # spot 정보로 zone/location_id/pixel 좌표 자동 채움
-        seq = sel_spot.spot_id.split("-")[-1]      # NNN
-        location_id = f"{sel_spot.floor}-{seq}"    # 예: 1F-001
-        zone_value = sel_spot.room_name            # 사용자가 정의한 방이름
+        location_id = location_id_from_spot(sel_spot.spot_id)  # 예: 1F-03
+        zone_value = sel_spot.room_name                        # 방이름
 
         new_eq = Equipment(
             equipment_id=auto_eid,
