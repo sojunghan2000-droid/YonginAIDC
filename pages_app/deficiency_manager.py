@@ -7,7 +7,9 @@ from datetime import date as date_t
 import streamlit as st
 
 from lib import data
-from lib.inspection_dialog import malfunction_dialog, new_inspection_dialog
+from lib.inspection_dialog import (
+    action_input_dialog, malfunction_dialog, new_inspection_dialog,
+)
 from lib.ui import badge, fmt_date, page_header, render_kpi_row
 
 
@@ -158,6 +160,15 @@ def render() -> None:
         st.session_state["_open_malfunction_dialog"] = False
         malfunction_dialog()
 
+    # [조치 입력] 버튼 트리거 — Deficiency 직접 모달
+    open_action = st.session_state.pop("_open_action_input", None)
+    if open_action:
+        action_input_dialog(open_action)
+
+    just_acted = st.session_state.pop("just_recorded_action", None)
+    if just_acted:
+        st.success(f"{just_acted} 조치 결과가 저장되었습니다.")
+
     # KPI
     all_rows = _build_unified_rows()
     cnt_def = sum(1 for r in all_rows if r.type == "지적사항")
@@ -250,12 +261,11 @@ def render() -> None:
                 unsafe_allow_html=True,
             )
         with cols[8]:
-            # 조치 대기 row에만 "조치 입력 →" 버튼
-            if r.status == "조치 대기" and r.notice_no != "-":
+            # 조치 대기 row에만 "조치 입력 →" 버튼 — 직접 모달 호출
+            if r.status == "조치 대기" and r.type == "지적사항":
                 if st.button("조치 입력 →", key=f"act_{r.type}_{r.raw_id}",
                              type="primary", use_container_width=True):
-                    st.session_state["focus_notice"] = r.notice_no
-                    st.session_state["page"] = "inspection"
+                    st.session_state["_open_action_input"] = r.raw_id
                     st.rerun()
             else:
                 st.markdown("<span style='color:#94A3B8;'>-</span>",

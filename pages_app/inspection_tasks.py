@@ -6,7 +6,7 @@ from datetime import datetime
 import streamlit as st
 
 from lib import data, auth
-from lib.inspection_dialog import task_dialog
+from lib.inspection_dialog import task_dialog, task_inspect_dialog
 from lib.ui import TASK_STATUS_KO, badge, fmt_date, page_header, render_kpi_row
 
 
@@ -74,12 +74,14 @@ def _round_detail_dialog(round_id: str) -> None:
         f"margin:0.4rem 0 0.3rem;'>Task 목록 ({len(tasks_active)}건)</div>",
         unsafe_allow_html=True,
     )
+    start_for: str | None = None  # [점검 시작] 클릭된 task_id
     if not tasks_active:
         st.info("이 회차에 점검 대상 장비가 없습니다.")
     else:
-        cols_ratio = [1.0, 2.6, 1.0, 1.0, 0.9]
+        # 컬럼 6개 — 점검 시작 버튼 추가
+        cols_ratio = [0.9, 2.4, 0.9, 0.9, 1.0, 0.7]
         head = st.columns(cols_ratio)
-        for col, txt in zip(head, ["작업 ID", "장비", "상태", "마감일", ""]):
+        for col, txt in zip(head, ["작업 ID", "장비", "상태", "마감일", "", ""]):
             col.markdown(
                 f"<div style='color:#64748B; font-size:0.76rem; "
                 f"font-weight:600;'>{txt}</div>",
@@ -107,12 +109,23 @@ def _round_detail_dialog(round_id: str) -> None:
                 unsafe_allow_html=True,
             )
             with row[4]:
+                # 점검 시작 — 완료된 Task는 비활성
+                disabled = (t.status == "Completed")
+                if st.button(
+                    "점검 시작 →" if not disabled else "점검 완료",
+                    key=f"rnd_start_{t.task_id}",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=disabled,
+                ):
+                    start_for = t.task_id
+            with row[5]:
                 # 제외 폼 토글 (상세 내 인라인 확장)
                 open_key = "round_dlg_exclude_open"
                 is_open = st.session_state.get(open_key) == t.task_id
                 if st.button("닫기" if is_open else "제외",
                              key=f"rnd_excl_{t.task_id}",
-                             type="primary" if is_open else "secondary",
+                             type="secondary",
                              use_container_width=True):
                     st.session_state[open_key] = (
                         None if is_open else t.task_id
@@ -169,6 +182,13 @@ def _round_detail_dialog(round_id: str) -> None:
                     data.restore_task(t.task_id)
                     st.success(f"{t.task_id} 복구했습니다.")
 
+    # [점검 시작] 버튼이 클릭됐으면 그 Task의 입력 모달을 띄움.
+    # dialog 안에서 다른 dialog 호출은 불가하므로 session_state로 전달해
+    # 다음 rerun에서 띄운다.
+    if start_for:
+        st.session_state["_open_task_inspect"] = start_for
+        st.rerun()
+
 
 def render() -> None:
     rounds = data.load_rounds()
@@ -199,8 +219,17 @@ def render() -> None:
             f"({submitted_ids[0]} ~ {submitted_ids[-1]})."
         )
 
+    completed_task = st.session_state.pop("just_completed_task", None)
+    if completed_task:
+        st.success(f"{completed_task} 점검 완료. 작업 조치 관리에서 후속 처리 가능.")
+
     if new_task_clicked:
         task_dialog()
+
+    # 회차 상세 내 [점검 시작] 클릭 시 띄울 모달
+    open_task = st.session_state.pop("_open_task_inspect", None)
+    if open_task:
+        task_inspect_dialog(open_task)
 
     # KPI — 회차 단위 + Task 단위 혼합
     total_rounds = len(rounds)

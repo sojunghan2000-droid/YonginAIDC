@@ -20,7 +20,7 @@ from lib.data import (
     next_task_id,
 )
 from lib.qr import make_qr, payload_for
-from lib.ui import badge, photo_input
+from lib.ui import badge, fmt_date, photo_input
 
 
 # 시설 카테고리 (소화기·소화전·감지기 등) — Equipment.category 에서 사용
@@ -195,6 +195,255 @@ def new_inspection_dialog() -> None:
         # 모달 닫기 (rerun으로 페이지 갱신)
         st.session_state.pop("inspect_target", None)
         st.session_state["just_submitted_inspection"] = True
+        st.rerun()
+
+
+@st.dialog("조치 입력", width="large")
+def action_input_dialog(deficiency_id: str) -> None:
+    """v1.5 Deficiency 후속 조치 입력 모달. 작업 조치 관리에서 호출."""
+    d = next(
+        (x for x in data.load_deficiencies() if x.deficiency_id == deficiency_id),
+        None,
+    )
+    if not d:
+        st.error("지적사항을 찾을 수 없습니다.")
+        return
+
+    st.markdown(
+        f"<div style='color:#475569; font-size:0.88rem; margin-bottom:0.5rem;'>"
+        f"<b>{d.deficiency_id}</b>"
+        f"{' · 통보서 ' + d.notice_no if d.notice_no else ''}"
+        f"<br><b>위치</b> · {d.floor}/{d.zone} · <b>점검일</b> · "
+        f"{fmt_date(d.inspection_date)} · 점검자 <b>{d.inspector}</b>"
+        f"<br><b>지적사항</b> · {d.issue}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    c1, c2 = st.columns(2)
+    with c1:
+        confirmer = st.text_input(
+            "확인자", value=d.confirmer or "김소장",
+            key=f"act_dlg_conf_{deficiency_id}",
+        )
+    with c2:
+        action_at = st.date_input(
+            "조치일", value=date.today(),
+            key=f"act_dlg_date_{deficiency_id}",
+        )
+    action_note = st.text_area(
+        "조치 내용",
+        placeholder="예: 적재물 이동 완료, 전구 교체, 안전핀 재장착 등",
+        key=f"act_dlg_note_{deficiency_id}",
+    )
+    photo = photo_input(
+        "조치 결과 사진",
+        key=f"act_dlg_photo_{deficiency_id}",
+        help_text="휴대폰·태블릿에서는 카메라 촬영 탭으로 즉시 촬영 가능합니다.",
+    )
+
+    if st.button(
+        "조치 결과 저장", type="primary", use_container_width=True,
+        key=f"act_dlg_submit_{deficiency_id}",
+    ):
+        if not action_note.strip():
+            st.error("조치 내용을 입력해 주세요.")
+            return
+        photo_bytes = photo.getvalue() if photo else None
+        data.record_deficiency_action(
+            deficiency_id=deficiency_id,
+            action_at=action_at,
+            action_note=action_note.strip(),
+            confirmer=confirmer.strip() or "김소장",
+            photo=photo_bytes,
+        )
+        st.session_state["just_recorded_action"] = deficiency_id
+        st.rerun()
+
+
+@st.dialog("점검 시작", width="large")
+def task_inspect_dialog(task_id: str) -> None:
+    """v1.5 Task 단위 모바일 점검 입력 모달.
+    회차 상세 모달의 [점검 시작] 버튼에서 호출."""
+    t = next((x for x in data.load_tasks() if x.task_id == task_id), None)
+    if not t:
+        st.error("점검 작업을 찾을 수 없습니다.")
+        return
+
+    # 장비 매칭 (location_id 기반 추정)
+    eq = None
+    if t.equipment_label:
+        loc = t.equipment_label.split(" - ")[0].strip()
+        eq = next(
+            (e for e in data.load_equipment() if e.location_id == loc),
+            None,
+        )
+
+    st.markdown(
+        f"<div style='color:#64748B; font-size:0.85rem; margin-bottom:0.5rem;'>"
+        f"<b>{t.task_id}</b> · {t.task_type}<br>"
+        f"<b>대상</b> · {t.equipment_label}<br>"
+        f"<b>마감</b> · {fmt_date(t.due_date)} · <b>회차</b> · "
+        f"{t.round_id or '—'}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # 장비 정보 박스 (있으면)
+    if eq:
+        st.markdown(
+            "<div style='background:#F8FAFC; border:1px solid #E2E8F0; "
+            "border-radius:10px; padding:0.7rem 0.9rem;'>"
+            f"<div style='font-weight:700; color:#0F172A;'>"
+            f"{eq.equipment_name}</div>"
+            f"<div style='color:#475569; font-size:0.86rem;'>"
+            f"위치 {eq.location_id} ({eq.floor}/{eq.zone}) · "
+            f"카테고리 {eq.category} · 시리얼 {eq.serial}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        inspector = st.text_input(
+            "점검자",
+            value=t.assignee if t.assignee not in ("", "Unassigned") else "박소방",
+            key=f"tsk_insp_{task_id}",
+        )
+    with c2:
+        inspect_date = st.date_input(
+            "점검일", value=date.today(), key=f"tsk_date_{task_id}",
+        )
+
+    st.markdown(
+        "<b style='color:#334155; font-size:0.92rem;'>점검 종류 (별지5)</b>",
+        unsafe_allow_html=True,
+    )
+    type_cols = st.columns(3)
+    types_selected = []
+    for col, ty in zip(type_cols, INSPECTION_TYPES):
+        with col:
+            if st.checkbox(ty, key=f"tsk_chk_{task_id}_{ty}"):
+                types_selected.append(ty)
+
+    st.markdown(
+        "<b style='color:#334155; font-size:0.92rem; margin-top:0.5rem;'>"
+        "점검 결과</b>",
+        unsafe_allow_html=True,
+    )
+    result = st.radio(
+        "결과", ["양호", "불량"], horizontal=True,
+        label_visibility="collapsed", key=f"tsk_res_{task_id}",
+    )
+
+    issue = ""
+    action_immediate = False
+    action_note_now = ""
+    action_photo_now = None
+    confirmer_value = inspector
+
+    if result == "불량":
+        issue = st.text_area(
+            "지적사항",
+            placeholder="예: 1-A계단 피난구 유도등 점등 불량",
+            key=f"tsk_issue_{task_id}",
+        )
+        action_immediate = st.checkbox(
+            "현장에서 즉시 조치 완료 (선택)",
+            value=False,
+            key=f"tsk_act_imm_{task_id}",
+            help="체크 시 지적사항의 조치 단계가 즉시 완료로 기록됩니다.",
+        )
+        if action_immediate:
+            confirmer_value = st.text_input(
+                "확인자",
+                value=inspector,
+                key=f"tsk_conf_{task_id}",
+            )
+            action_note_now = st.text_area(
+                "조치 내용",
+                placeholder="예: 적재물 이동 완료, 전구 교체 등",
+                key=f"tsk_act_note_{task_id}",
+            )
+            action_photo_now = photo_input(
+                "조치 사진 (선택)",
+                key=f"tsk_act_photo_{task_id}",
+                help_text="모바일은 카메라 촬영 탭으로 즉시 촬영.",
+            )
+        else:
+            st.caption(
+                "→ 지적사항만 등록되며, 작업 조치 관리에서 별도 시점에 조치 입력합니다."
+            )
+
+    if st.button(
+        "점검 결과 제출",
+        type="primary",
+        use_container_width=True,
+        key=f"tsk_submit_{task_id}",
+    ):
+        if not types_selected:
+            st.error("점검 종류를 1개 이상 선택해 주세요.")
+            return
+        if result == "불량" and not issue.strip():
+            st.error("불량이면 지적사항을 입력해 주세요.")
+            return
+
+        # 통보서 번호 (불량일 때만 발급)
+        new_no = None
+        if result == "불량":
+            new_no = next_notice_no(inspect_date)
+
+        # Deficiency row 생성 (v1.5: 조치 단계 포함)
+        photo_bytes = (
+            action_photo_now.getvalue()
+            if (action_photo_now and action_immediate)
+            else None
+        )
+        new_def_id = data.next_deficiency_id()
+        photo_path = None
+        if photo_bytes:
+            photo_path = data._upload_action_photo(new_def_id, photo_bytes)
+
+        # 사용 영역: floor/zone 은 장비 정보 또는 Task 정보 사용
+        floor = eq.floor if eq else t.floor
+        zone = eq.zone if eq else t.zone
+        data.add_deficiency(data.Deficiency(
+            deficiency_id=new_def_id,
+            inspection_date=inspect_date,
+            inspector=inspector,
+            floor=floor, zone=zone,
+            inspection_types=types_selected,  # type: ignore[arg-type]
+            issue=issue.strip() or "양호",
+            resolution=(
+                "완료" if (result == "양호" or action_immediate) else "불가"
+            ),  # type: ignore[arg-type]
+            confirmer=confirmer_value if (result == "양호" or action_immediate) else None,
+            notice_no=new_no,
+            task_id=t.task_id,
+            action_done=action_immediate or result == "양호",
+            action_at=inspect_date if (action_immediate or result == "양호") else None,
+            action_note=action_note_now.strip() if action_immediate else "",
+            action_photo_path=photo_path,
+            submitter=inspector,
+        ))
+
+        # 장비 health_status 갱신 (있으면)
+        if eq:
+            data.record_equipment_inspection(
+                eq.equipment_id, inspect_date,
+                "PASS" if result == "양호" else "FAIL",
+            )
+
+        # Task → Completed + 회차 status 자동 재계산
+        from lib.data import _db, _task_rows, _refresh_round_status
+        _db().table("inspection_tasks").update(
+            {"status": "Completed"}
+        ).eq("task_id", t.task_id).execute()
+        _task_rows.clear()
+        if t.round_id:
+            _refresh_round_status(t.round_id)
+
+        st.session_state["just_completed_task"] = t.task_id
         st.rerun()
 
 
@@ -447,44 +696,64 @@ def task_dialog() -> None:
 
     resolved_type = (custom_type.strip() if type_choice == "기타" else type_choice)
 
-    # 점검 유형 → 적용 가능 장비 후보 필터
-    all_eq = data.load_equipment()
-    if type_choice == "기타":
-        candidates = all_eq  # 기타는 전체에서 자유 선택
-    else:
-        candidates = [e for e in all_eq if resolved_type in (e.inspection_types or [])]
-
-    eq_indices = list(range(len(candidates)))
-
-    # 점검 유형이 바뀌면 multiselect 선택 초기화
-    last_type = st.session_state.get("task_dlg_last_type")
-    if last_type != type_choice:
-        st.session_state["task_dlg_eq_idxs"] = []
-        st.session_state["task_dlg_last_type"] = type_choice
-
-    # dialog 안에서는 st.rerun()이 모달을 닫아버리므로 session_state만 세팅하고
-    # Streamlit의 자동 rerun에 맡긴다. (별지6과 다른 점)
-    sel_col, clr_col = st.columns(2)
-    with sel_col:
-        if st.button("모두 선택", key="task_dlg_select_all",
-                     use_container_width=True,
-                     disabled=not eq_indices):
-            st.session_state["task_dlg_eq_idxs"] = list(eq_indices)
-    with clr_col:
-        if st.button("일괄 해제", key="task_dlg_clear_all",
-                     use_container_width=True):
-            st.session_state["task_dlg_eq_idxs"] = []
-
-    sel_idxs = st.multiselect(
-        f"대상 장비 (이 유형 해당 {len(candidates)}건 후보)",
-        options=eq_indices,
-        format_func=lambda i: (
-            f"{candidates[i].location_id} · {candidates[i].equipment_name}"
+    # v1.5: 자유 점검 옵션 — 대상을 미리 선택하지 않고 점검 시작 시 정하는 방식
+    free_mode = st.checkbox(
+        "대상 미선택 (자유 점검) — 회차만 만들고 점검 시작 시 장비를 선택",
+        key="task_dlg_free_mode",
+        help=(
+            "체크 시 회차 1건만 만들고 Task는 0개입니다. "
+            "점검자가 안전점검 → [신규 Task 추가] 로 그때그때 등록 가능."
         ),
-        key="task_dlg_eq_idxs",
-        placeholder="장비를 선택하세요 (여러 건 선택 가능)",
     )
-    selected_eqs = [candidates[i] for i in sel_idxs]
+
+    if free_mode:
+        candidates = []
+        selected_eqs = []
+        st.markdown(
+            "<div style='color:#94A3B8; font-size:0.82rem;'>"
+            "회차만 등록되고 대상 장비는 빈 상태로 시작합니다.</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        # 점검 유형 → 적용 가능 장비 후보 필터
+        all_eq = data.load_equipment()
+        if type_choice == "기타":
+            candidates = all_eq  # 기타는 전체에서 자유 선택
+        else:
+            candidates = [
+                e for e in all_eq if resolved_type in (e.inspection_types or [])
+            ]
+
+        eq_indices = list(range(len(candidates)))
+
+        # 점검 유형이 바뀌면 multiselect 선택 초기화
+        last_type = st.session_state.get("task_dlg_last_type")
+        if last_type != type_choice:
+            st.session_state["task_dlg_eq_idxs"] = []
+            st.session_state["task_dlg_last_type"] = type_choice
+
+        # dialog 안에서는 st.rerun()이 모달을 닫아버리므로 session_state만 세팅
+        sel_col, clr_col = st.columns(2)
+        with sel_col:
+            if st.button("모두 선택", key="task_dlg_select_all",
+                         use_container_width=True,
+                         disabled=not eq_indices):
+                st.session_state["task_dlg_eq_idxs"] = list(eq_indices)
+        with clr_col:
+            if st.button("일괄 해제", key="task_dlg_clear_all",
+                         use_container_width=True):
+                st.session_state["task_dlg_eq_idxs"] = []
+
+        sel_idxs = st.multiselect(
+            f"대상 장비 (이 유형 해당 {len(candidates)}건 후보)",
+            options=eq_indices,
+            format_func=lambda i: (
+                f"{candidates[i].location_id} · {candidates[i].equipment_name}"
+            ),
+            key="task_dlg_eq_idxs",
+            placeholder="장비를 선택하세요 (여러 건 선택 가능)",
+        )
+        selected_eqs = [candidates[i] for i in sel_idxs]
 
     # 공유 입력 (담당자·마감일·메모)
     c_a, c_b = st.columns([1, 1])
@@ -513,11 +782,16 @@ def task_dialog() -> None:
         st.warning("마감일이 오늘 이전입니다. 과거 일정 보정용이면 그대로 등록 가능합니다.")
 
     n_sel = len(selected_eqs)
-    submit_label = f"등록 ({n_sel}건)" if n_sel else "장비를 1건 이상 선택하세요"
+    if free_mode:
+        submit_label = "회차만 등록 (자유 점검)"
+        submit_disabled = False
+    else:
+        submit_label = f"등록 ({n_sel}건)" if n_sel else "장비를 1건 이상 선택하세요"
+        submit_disabled = (n_sel == 0)
     if st.button(submit_label, type="primary",
                  use_container_width=True,
                  key="task_dlg_submit",
-                 disabled=(n_sel == 0)):
+                 disabled=submit_disabled):
         if not resolved_type:
             st.error("점검 유형을 선택(또는 입력)해 주세요.")
             return
