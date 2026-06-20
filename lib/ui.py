@@ -112,6 +112,34 @@ THEME_CSS = """
         font-weight: 700 !important;
     }
 
+    /* 알림 popover 안 카드형 버튼 — 카드 전체가 클릭 영역.
+       wrapper key 패턴 .st-key-notify_card_ 로 매칭. */
+    [class*="st-key-notify_card_"] button {
+        text-align: left !important;
+        padding: 0.7rem 0.85rem !important;
+        background: #FFFFFF !important;
+        color: #0F172A !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 10px !important;
+        font-weight: 500 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        line-height: 1.45 !important;
+    }
+    [class*="st-key-notify_card_"] button > div {
+        align-items: flex-start !important;
+        justify-content: flex-start !important;
+    }
+    [class*="st-key-notify_card_"] button p {
+        margin: 0 !important;
+        text-align: left !important;
+    }
+    [class*="st-key-notify_card_"] button:hover {
+        background: #F1F5F9 !important;
+        border-color: #2563EB !important;
+        cursor: pointer !important;
+    }
+
     /* 상단바 도움말 버튼 — 알림 벨과 동일 패턴 */
     .st-key-help_btn {
         position: fixed; top: 13px; right: 8.5rem;
@@ -583,7 +611,7 @@ def _notify_panel() -> None:
         st.info("현재 알림이 없습니다.")
         return
 
-    # ─ 조치 대기 통보서 ─
+    # ─ 조치 대기 통보서 ─ (카드 전체가 클릭 영역)
     if notices:
         st.markdown(
             "<div style='font-weight:600; color:#0F172A; font-size:0.88rem; "
@@ -591,28 +619,22 @@ def _notify_panel() -> None:
             unsafe_allow_html=True,
         )
         for n in notices:
-            with st.container(border=True):
-                st.markdown(
-                    f"<div style='font-weight:600; color:#0F172A; font-size:0.88rem;'>"
-                    f"{n.notice_no} · {n.floor}/{n.zone} · {n.inspection_type}"
-                    f"</div>"
-                    f"<div style='color:#334155; font-size:0.85rem; "
-                    f"margin-top:0.2rem;'>{n.issue}</div>"
-                    f"<div style='color:#64748B; font-size:0.76rem; "
-                    f"margin-top:0.2rem;'>"
-                    f"제출자 {n.submitter} · 확인자 {n.confirmer} · "
-                    f"발급일 {fmt_date(n.inspection_date)}"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                if st.button("이동 →", key=f"notify_goto_n_{n.notice_no}",
-                             type="primary", use_container_width=True):
+            label = (
+                f"**{n.notice_no} · {n.floor}/{n.zone} · {n.inspection_type}**  \n"
+                f"{n.issue}  \n"
+                f":gray[제출자 {n.submitter} · 확인자 {n.confirmer} · "
+                f"발급일 {fmt_date(n.inspection_date)}]"
+            )
+            with st.container(key=f"notify_card_n_{n.notice_no}"):
+                if st.button(label,
+                             key=f"notify_btn_n_{n.notice_no}",
+                             use_container_width=True):
                     st.session_state["page"] = "deficiencies"
                     st.session_state["unified_type"] = "조치 대기만"
                     st.session_state["focus_notice"] = n.notice_no
                     st.rerun()
 
-    # ─ 지연 태스크 ─
+    # ─ 지연 태스크 ─ (카드 전체가 클릭 영역)
     if tasks:
         st.markdown(
             "<div style='font-weight:600; color:#0F172A; font-size:0.88rem; "
@@ -625,25 +647,19 @@ def _notify_panel() -> None:
                 delta = (today - t.due_date).days
             except Exception:
                 delta = None
-            delta_html = (
-                f" <span style='color:#DC2626; font-weight:600;'>"
-                f"(-{delta}일 지연)</span>" if delta and delta > 0 else ""
+            delay_txt = (
+                f" :red[**(-{delta}일 지연)**]" if delta and delta > 0 else ""
             )
-            with st.container(border=True):
-                st.markdown(
-                    f"<div style='font-weight:600; color:#0F172A; font-size:0.88rem;'>"
-                    f"{t.task_id} · {t.equipment_label}</div>"
-                    f"<div style='color:#334155; font-size:0.85rem; "
-                    f"margin-top:0.2rem;'>{t.task_type}</div>"
-                    f"<div style='color:#64748B; font-size:0.76rem; "
-                    f"margin-top:0.2rem;'>"
-                    f"담당 {t.assignee or '미지정'} · 마감 "
-                    f"{fmt_date(t.due_date)}{delta_html}"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-                if st.button("이동 →", key=f"notify_goto_t_{t.task_id}",
-                             type="primary", use_container_width=True):
+            label = (
+                f"**{t.task_id} · {t.equipment_label}**  \n"
+                f"{t.task_type}  \n"
+                f":gray[담당 {t.assignee or '미지정'} · 마감 "
+                f"{fmt_date(t.due_date)}]{delay_txt}"
+            )
+            with st.container(key=f"notify_card_t_{t.task_id}"):
+                if st.button(label,
+                             key=f"notify_btn_t_{t.task_id}",
+                             use_container_width=True):
                     st.session_state["page"] = "tasks"
                     st.session_state["tasks_view"] = "지연"
                     st.session_state["focus_task"] = t.task_id
