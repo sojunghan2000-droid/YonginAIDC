@@ -697,8 +697,8 @@ def _render_avatar_menu() -> None:
                 st.rerun()
             if auth.is_admin():
                 if st.button("사용자 관리", key="menu_admin", use_container_width=True):
-                    st.session_state["page"] = "settings"
-                    st.session_state["settings_tab"] = "admin"
+                    st.session_state["page"] = "admin"
+                    st.session_state["admin_tab"] = "사용자 관리"
                     st.rerun()
             if st.button("로그아웃", key="menu_logout", use_container_width=True):
                 auth.sign_out()
@@ -715,9 +715,12 @@ NAV_PAGES = [
     ("reports", "보고서"),
 ]
 
-# 관리자 전용 메뉴 (auth.is_admin() == True 인 사용자에게만 노출)
-NAV_PAGES_ADMIN = [
-    ("admin", "관리자 메뉴"),
+# 관리자 전용 메뉴 (auth.is_admin() == True 인 사용자에게만 노출).
+# (page_key, admin_tab_label) — admin_tab 은 admin_center 의 라디오 섹션과 매칭.
+NAV_ADMIN_HEADER = ("admin", "관리자 메뉴")
+NAV_ADMIN_SUB = [
+    ("admin", "위치 마스터"),
+    ("admin", "사용자 관리"),
 ]
 
 
@@ -766,15 +769,39 @@ def render_sidebar(active: str) -> str:
             show_admin = auth.is_admin()
         except Exception:
             show_admin = False
+        admin_open = False
         if show_admin:
             st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
-            for idx, (key, label) in enumerate(NAV_PAGES_ADMIN, start=1):
-                btn_label = "A." if mini else f"A. {label}"
-                is_active = key == active
-                btn_type = "primary" if is_active else "secondary"
-                if st.button(btn_label, key=f"nav_{key}",
-                             type=btn_type, use_container_width=True):
-                    selected = key
+            header_key, header_label = NAV_ADMIN_HEADER
+            current_tab = st.session_state.get("admin_tab")
+            is_active_header = header_key == active
+            header_btn_label = "A." if mini else f"A. {header_label}"
+            if st.button(
+                header_btn_label,
+                key=f"nav_admin_header",
+                type="primary" if is_active_header else "secondary",
+                use_container_width=True,
+            ):
+                selected = header_key
+
+            # 하위 메뉴 — 헤더가 active 일 때만 인덴트 표시
+            if is_active_header or admin_open:
+                for sub_idx, (sub_key, sub_label) in enumerate(NAV_ADMIN_SUB):
+                    sub_btn_label = (
+                        f"· {sub_idx + 1}." if mini else f"     · {sub_label}"
+                    )
+                    is_sub_active = (is_active_header
+                                     and current_tab == sub_label)
+                    sub_type = "primary" if is_sub_active else "secondary"
+                    if st.button(
+                        sub_btn_label,
+                        key=f"nav_admin_sub_{sub_label}",
+                        type=sub_type,
+                        use_container_width=True,
+                    ):
+                        selected = sub_key
+                        # 사이드바 클릭 시 어떤 탭을 활성화할지 admin_center 에 알림
+                        st.session_state["admin_tab"] = sub_label
 
         st.markdown('<hr class="section-divider">', unsafe_allow_html=True)
         st.markdown(

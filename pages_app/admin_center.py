@@ -368,6 +368,112 @@ def _spot_master_tab() -> None:
         st.success(msg)
 
 
+def _user_admin_tab() -> None:
+    """사용자 관리 — Supabase Auth 사용자 리스트 + 권한·이름·비밀번호 관리."""
+    me = auth.current_user()
+    if not me:
+        st.error("로그인이 필요합니다.")
+        return
+    admin = auth.admin_client()
+    try:
+        users = admin.auth.admin.list_users()
+    except Exception as e:
+        st.error(f"사용자 목록 조회 실패: {e}")
+        return
+
+    admin_count = sum(
+        1 for u in users if (u.app_metadata or {}).get("role") == "admin"
+    )
+    st.markdown(
+        f"<div style='color:#64748B; font-size:0.88rem; margin-bottom:0.6rem;'>"
+        f"전체 사용자 {len(users)}명 · 관리자 {admin_count}명</div>",
+        unsafe_allow_html=True,
+    )
+
+    for u in users:
+        meta = u.user_metadata or {}
+        username = meta.get("username") or (u.email or "").split("@")[0]
+        name = meta.get("name") or username
+        role = (u.app_metadata or {}).get("role", "user")
+        is_me = u.id == me["user_id"]
+        role_label = "관리자" if role == "admin" else "일반"
+        title = f"{name} ({username}) · {role_label}" + (" · 본인" if is_me else "")
+
+        with st.expander(title):
+            c1, c2, c3 = st.columns(3)
+
+            # 권한 변경 (본인 제외, 마지막 관리자 강등 방지)
+            with c1:
+                st.markdown("<b style='font-size:0.88rem;'>권한 변경</b>",
+                            unsafe_allow_html=True)
+                if is_me:
+                    st.caption("본인 권한은 변경할 수 없습니다.")
+                else:
+                    new_role = st.selectbox(
+                        "역할", ["user", "admin"],
+                        index=0 if role == "user" else 1,
+                        format_func=lambda r: "일반" if r == "user" else "관리자",
+                        key=f"role_{u.id}",
+                    )
+                    if st.button("권한 적용", key=f"role_btn_{u.id}",
+                                 use_container_width=True):
+                        if role == "admin" and new_role == "user" and admin_count <= 1:
+                            st.error("마지막 관리자는 강등할 수 없습니다.")
+                        else:
+                            try:
+                                admin.auth.admin.update_user_by_id(
+                                    u.id, {"app_metadata": {"role": new_role}}
+                                )
+                                st.success("권한이 변경되었습니다.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"실패: {e}")
+
+            # 이름 수정
+            with c2:
+                st.markdown("<b style='font-size:0.88rem;'>이름 수정</b>",
+                            unsafe_allow_html=True)
+                edit_name = st.text_input("이름", value=name,
+                                          key=f"name_{u.id}",
+                                          label_visibility="collapsed")
+                if st.button("이름 저장", key=f"name_btn_{u.id}",
+                             use_container_width=True):
+                    if not edit_name.strip():
+                        st.error("이름을 입력해 주세요.")
+                    else:
+                        try:
+                            admin.auth.admin.update_user_by_id(
+                                u.id,
+                                {"user_metadata": {**meta, "name": edit_name.strip()}},
+                            )
+                            st.success("이름이 변경되었습니다.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"실패: {e}")
+
+            # 비밀번호 초기화
+            with c3:
+                st.markdown("<b style='font-size:0.88rem;'>비밀번호 초기화</b>",
+                            unsafe_allow_html=True)
+                temp_pw = st.text_input("새 임시 비밀번호", type="password",
+                                        key=f"pw_{u.id}",
+                                        label_visibility="collapsed",
+                                        placeholder="새 임시 비밀번호 (6자+)")
+                if st.button("초기화 적용", key=f"pw_btn_{u.id}",
+                             use_container_width=True):
+                    if len(temp_pw) < 6:
+                        st.error("6자 이상 입력해 주세요.")
+                    else:
+                        try:
+                            admin.auth.admin.update_user_by_id(
+                                u.id, {"password": temp_pw}
+                            )
+                            st.success("비밀번호가 초기화되었습니다. "
+                                       "해당 사용자에게 전달 후 직접 변경하도록 안내하세요.")
+                        except Exception as e:
+                            st.error(f"실패: {e}")
+
+
 def render() -> None:
     if not auth.is_admin():
         st.error("관리자 권한이 필요합니다. 사이드바의 일반 메뉴를 이용해 주세요.")
@@ -375,9 +481,21 @@ def render() -> None:
 
     page_header(
         "관리자 메뉴",
-        "관리자 전용 설정 — 위치 마스터(spot) 정의, 사용자 관리(v2 예정) 등.",
+        "관리자 전용 설정 — 위치 마스터(spot) 정의 · 사용자 권한·계정 관리.",
     )
 
-    tab_spots, = st.tabs(["위치 마스터 (spot)"])
-    with tab_spots:
+    # 사이드바 하위 메뉴에서 어떤 탭을 활성화할지 결정 (admin_tab 세션 키)
+    # st.tabs는 외부 활성화가 어려우므로 st.radio 패턴으로 구현
+    tabs = ["위치 마스터", "사용자 관리"]
+    section = st.radio(
+        "관리자 섹션",
+        tabs,
+        horizontal=True,
+        key="admin_tab",
+        label_visibility="collapsed",
+    )
+    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+    if section == "위치 마스터":
         _spot_master_tab()
+    else:
+        _user_admin_tab()
