@@ -31,12 +31,16 @@ def _summary_tab() -> None:
     tk_kpi = data.task_kpis()
     action_rate = data.notice_action_rate()
 
+    qr_coverage = eq_kpi.get("qr_coverage", 0.0)
+    qr_variant = "alert" if qr_coverage < 100 else "default"
+    qr_hint = "QR 부착률" if qr_coverage >= 100 else "미부착 장비 있음"
     render_kpi_row([
         ("전체 시설", f"{eq_kpi['total']:,}", f"이번 달 +{eq_kpi['new_this_month']}건", "default"),
         ("미조치 항목", f"{eq_kpi['pending_issues']}", "긴급 점검 알림", "alert"),
         ("지연 태스크", f"{tk_kpi['overdue']}", "즉시 조치 필요", "alert"),
         ("작업 조치율", f"{action_rate:.1f}%" if action_rate is not None else "—",
          "조치 완료 / 발급 통보서", "default"),
+        ("QR 적용률", f"{qr_coverage:.1f}%", qr_hint, qr_variant),
     ])
 
     st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
