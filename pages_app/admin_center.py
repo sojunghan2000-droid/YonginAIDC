@@ -199,11 +199,30 @@ def _spot_edit_dialog(spot_id: str) -> None:
             key=init_y_key,
         )
 
+    # 임시 spot인 경우 정식 전환 토글
+    promote_to_regular = False
+    if s.is_temporary:
+        st.markdown(
+            "<div style='background:#EFF6FF; border:1px solid #BFDBFE; "
+            "border-radius:8px; padding:0.5rem 0.7rem; margin:0.3rem 0; "
+            "color:#1E3A8A; font-size:0.86rem;'>"
+            "🆕 이 spot은 점검자가 현장에서 임시 등록했습니다. "
+            "방이름·좌표를 확인하고 정식 전환하세요."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        promote_to_regular = st.checkbox(
+            "정식 spot으로 전환 (체크 + 저장)",
+            key=f"edit_promote_{spot_id}",
+        )
+
+    new_is_temp = (s.is_temporary and not promote_to_regular)
     changed = (
         new_room.strip() != s.room_name
         or new_notes.strip() != s.notes
         or round(new_x, 2) != round(s.x_pct, 2)
         or round(new_y, 2) != round(s.y_pct, 2)
+        or new_is_temp != s.is_temporary
     )
 
     bc1, bc2 = st.columns([1, 1])
@@ -217,9 +236,12 @@ def _spot_edit_dialog(spot_id: str) -> None:
                     room_name=new_room.strip(),
                     notes=new_notes.strip(),
                     x_pct=float(new_x), y_pct=float(new_y),
+                    is_temporary=new_is_temp,
                 )
             )
             msg = f"{s.spot_id} 속성 저장 완료."
+            if s.is_temporary and not new_is_temp:
+                msg += " (임시 → 정식 전환됨)"
             if n_synced:
                 msg += f" 매핑 장비 {n_synced}건의 위치 정보도 동기화."
             st.session_state["admin_spot_save_msg"] = msg
@@ -487,8 +509,14 @@ def _spot_master_tab() -> None:
     for s in spots:
         row = st.columns(cols_ratio, vertical_alignment="center")
         in_use = s.spot_id in used
+        temp_badge = (
+            " <span style='background:#DBEAFE; color:#1E3A8A; padding:0.05rem 0.4rem; "
+            "border-radius:6px; font-size:0.68rem; font-weight:700;'>임시</span>"
+            if s.is_temporary else ""
+        )
         row[0].markdown(
-            f"<span style='font-weight:600; color:#0F172A;'>{s.spot_id}</span>",
+            f"<span style='font-weight:600; color:#0F172A;'>{s.spot_id}</span>"
+            f"{temp_badge}",
             unsafe_allow_html=True,
         )
         row[1].markdown(s.room_name)

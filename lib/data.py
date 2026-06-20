@@ -61,13 +61,16 @@ class Equipment:
 
 @dataclass
 class Spot:
-    """도면 위 장비 후보 위치 (관리자가 정의). v1.1 추가."""
+    """도면 위 장비 후보 위치 (관리자가 정의). v1.1 추가.
+    v1.5+: is_temporary — 점검자가 현장에서 임시 등록한 spot.
+    관리자가 위치 마스터에서 속성 보완 후 정식 전환(is_temporary=False)."""
     spot_id: str
     floor: str
     room_name: str
     notes: str
     x_pct: float
     y_pct: float
+    is_temporary: bool = False
 
 
 # 점검 회차 등록 시 사용하는 운영 주기 카탈로그 (v1.5+)
@@ -262,6 +265,7 @@ def _row_to_spot(r: dict) -> Spot:
         room_name=r["room_name"], notes=r.get("notes") or "",
         x_pct=float(r.get("x_pct") or 0.0),
         y_pct=float(r.get("y_pct") or 0.0),
+        is_temporary=bool(r.get("is_temporary") or False),
     )
 
 
@@ -472,6 +476,7 @@ def add_spot(s: Spot) -> None:
         "spot_id": s.spot_id, "floor": s.floor,
         "room_name": s.room_name, "notes": s.notes,
         "x_pct": s.x_pct, "y_pct": s.y_pct,
+        "is_temporary": s.is_temporary,
     }).execute()
     _spot_rows.clear()
 
@@ -480,6 +485,7 @@ def update_spot(s: Spot) -> None:
     _db().table("floor_spots").update({
         "floor": s.floor, "room_name": s.room_name,
         "notes": s.notes, "x_pct": s.x_pct, "y_pct": s.y_pct,
+        "is_temporary": s.is_temporary,
     }).eq("spot_id", s.spot_id).execute()
     _spot_rows.clear()
 
@@ -490,6 +496,7 @@ def update_spot_with_equipment_sync(s: Spot) -> int:
     _db().table("floor_spots").update({
         "floor": s.floor, "room_name": s.room_name,
         "notes": s.notes, "x_pct": s.x_pct, "y_pct": s.y_pct,
+        "is_temporary": s.is_temporary,
     }).eq("spot_id", s.spot_id).execute()
     res = _db().table("equipment").update({
         "pixel_x": s.x_pct, "pixel_y": s.y_pct,

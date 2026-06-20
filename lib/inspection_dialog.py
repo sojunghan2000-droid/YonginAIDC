@@ -307,15 +307,19 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                 hoverinfo="text",
             ))
 
-    # 빈 spot (장비 매핑 없는 spot) — 옅은 회색 마커
+    # 빈 spot / 임시 spot — 다이아 마커
     used_spot_ids = {e.spot_id for e in all_eq if e.spot_id and e.floor == floor}
-    # 이미 회차에 빈 spot으로 포함된 라벨 패턴 추적
     already_empty_spot_ids = {
         t.equipment_label.split(" - ")[0]
         for t in data.tasks_of_round(round_id, include_excluded=True)
-        if "(빈 spot)" in t.equipment_label
+        if "(빈 spot)" in t.equipment_label or "(임시 spot)" in t.equipment_label
     }
-    empty_spots = [s for s in floor_spots if s.spot_id not in used_spot_ids]
+    empty_spots = [
+        s for s in floor_spots
+        if s.spot_id not in used_spot_ids and not s.is_temporary
+    ]
+    temp_spots = [s for s in floor_spots if s.is_temporary]
+
     if empty_spots:
         xs, ys, txts, custom = [], [], [], []
         for sp in empty_spots:
@@ -323,7 +327,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
             ys.append(FIG_H - sp.y_pct / 100 * FIG_H)
             in_round = sp.spot_id in already_empty_spot_ids
             txts.append("빈·포함" if in_round else "빈")
-            custom.append((sp.spot_id, sp.room_name, in_round))
+            custom.append(("spot", sp.spot_id, sp.room_name, in_round))
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="markers+text",
             text=txts, textposition="bottom center",
@@ -333,11 +337,49 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                         symbol="diamond"),
             customdata=custom,
             hovertemplate=(
-                "<b>%{customdata[1]}</b> (빈 spot)<br>"
-                "%{customdata[0]}<extra></extra>"
+                "<b>%{customdata[2]}</b> (빈 spot)<br>"
+                "%{customdata[1]}<extra></extra>"
             ),
             name="빈 spot", showlegend=False,
         ))
+
+    if temp_spots:
+        xs, ys, txts, custom = [], [], [], []
+        for sp in temp_spots:
+            xs.append(sp.x_pct / 100 * FIG_W)
+            ys.append(FIG_H - sp.y_pct / 100 * FIG_H)
+            in_round = sp.spot_id in already_empty_spot_ids
+            txts.append("임시·포함" if in_round else "임시")
+            custom.append(("spot", sp.spot_id, sp.room_name, in_round))
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="markers+text",
+            text=txts, textposition="bottom center",
+            textfont=dict(size=9, color="#1D4ED8"),
+            marker=dict(size=14, color="#3B82F6",
+                        line=dict(color="#1E40AF", width=2),
+                        symbol="diamond-open"),
+            customdata=custom,
+            hovertemplate=(
+                "<b>%{customdata[2]}</b> (임시 spot)<br>"
+                "%{customdata[1]} · 관리자 검증 대기<extra></extra>"
+            ),
+            name="임시 spot", showlegend=False,
+        ))
+
+    # 클릭 가능한 투명 격자 — 빈 곳 클릭으로 임시 spot 좌표 픽업
+    grid_x, grid_y = [], []
+    for i in range(50):
+        for j in range(50):
+            grid_x.append((i + 0.5) / 50 * FIG_W)
+            grid_y.append((j + 0.5) / 50 * FIG_H)
+    fig.add_trace(go.Scatter(
+        x=grid_x, y=grid_y,
+        mode="markers",
+        marker=dict(size=18, color="rgba(0,0,0,0)"),
+        customdata=[("grid",)] * len(grid_x),
+        hoverinfo="skip", showlegend=False,
+        name="grid",
+    ))
 
     fig.update_xaxes(visible=False, range=[0, FIG_W], constrain="domain")
     fig.update_yaxes(visible=False, range=[0, FIG_H], scaleanchor="x", scaleratio=1)
@@ -361,31 +403,39 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         key=f"add_tsk_map_chart_{round_id}_{floor}",
     )
 
-    # 클릭 → 후보 장비 또는 빈 spot 선택 (잠금 시 무시)
+    # 클릭 → 후보 장비 / 빈 spot / 임시 spot / 격자(빈 곳) 분기
+    pending_grid_key = f"add_tsk_pending_grid_{round_id}_{floor}"
     if (not locked and event and getattr(event, "selection", None)
             and getattr(event.selection, "points", None)):
         pt = event.selection.points[-1]
         cd = pt.get("customdata")
         if cd:
-            # 빈 spot 마커 (customdata[2] = in_round bool)
-            if len(cd) >= 3 and isinstance(cd[2], bool):
-                spot_id, room_name, in_round = cd
+            kind = cd[0]
+            if kind == "spot":
+                _, spot_id, room_name, in_round = cd
                 if in_round:
                     st.warning(
-                        f"{spot_id} ({room_name})는 이미 회차에 포함된 빈 spot입니다."
+                        f"{spot_id} ({room_name})는 이미 회차에 포함되어 있습니다."
                     )
                 else:
                     sel_spot = next(
-                        (s for s in empty_spots if s.spot_id == spot_id), None
+                        (s for s in floor_spots if s.spot_id == spot_id), None
                     )
                     if sel_spot:
+                        label = "임시 spot" if sel_spot.is_temporary else "빈 spot"
                         st.success(
                             f"선택: **{sel_spot.spot_id}** · {sel_spot.room_name} "
-                            f"(빈 spot — 장비 없음)"
+                            f"({label})"
                         )
+                        st.session_state.pop(pending_grid_key, None)
                         return {"type": "empty_spot", "data": sel_spot}
+            elif kind == "grid":
+                # 빈 곳 클릭 — 임시 spot 좌표 픽업
+                x_pct = round(pt["x"] / FIG_W * 100, 2)
+                y_pct = round((FIG_H - pt["y"]) / FIG_H * 100, 2)
+                st.session_state[pending_grid_key] = (x_pct, y_pct)
             else:
-                # 장비 마커
+                # 장비 마커 (기존 customdata 포맷: (eq_id, name, location_id))
                 eq_id = cd[0]
                 picked = next(
                     (c for c in candidates if c.equipment_id == eq_id), None
@@ -395,11 +445,65 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                         f"선택: **{picked.equipment_id}** · "
                         f"{picked.equipment_name} ({picked.location_id})"
                     )
+                    st.session_state.pop(pending_grid_key, None)
                     return {"type": "equipment", "data": picked}
                 st.warning(f"{eq_id}는 이미 회차에 포함된 장비입니다.")
+
+    # 임시 spot 추가 폼 — 빈 곳 클릭으로 좌표 픽업된 상태일 때 노출
+    pending = st.session_state.get(pending_grid_key)
+    if pending:
+        x_pct, y_pct = pending
+        st.markdown(
+            f"<div style='background:#EFF6FF; border:1px solid #BFDBFE; "
+            f"border-radius:8px; padding:0.6rem 0.8rem; margin-top:0.3rem;'>"
+            f"<b style='color:#1E3A8A;'>🆕 임시 spot 위치 픽업됨</b> · "
+            f"좌표 ({x_pct}, {y_pct}) · 다음 spot ID: "
+            f"<code>{data.next_spot_id(floor)}</code><br>"
+            f"<span style='color:#475569; font-size:0.84rem;'>"
+            f"위치 설명을 입력하고 [임시 spot + Task 추가]를 누르면 "
+            f"임시 spot이 생성되고 Task도 함께 등록됩니다. "
+            f"관리자가 위치 마스터에서 검증 후 정식 전환합니다.</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        desc = st.text_input(
+            "위치 설명 (room_name) *",
+            key=f"add_tsk_temp_desc_{round_id}",
+            placeholder="예: 4F 동측 출입구 옆",
+        )
+        bcols = st.columns([1, 1])
+        with bcols[0]:
+            if st.button(
+                "임시 spot + Task 추가",
+                type="primary", use_container_width=True,
+                key=f"add_tsk_temp_submit_{round_id}",
+                disabled=not desc.strip(),
+            ):
+                new_id = data.next_spot_id(floor)
+                from lib.data import Spot
+                new_spot = Spot(
+                    spot_id=new_id, floor=floor,
+                    room_name=desc.strip(), notes="임시 등록 (검증 대기)",
+                    x_pct=float(x_pct), y_pct=float(y_pct),
+                    is_temporary=True,
+                )
+                data.add_spot(new_spot)
+                st.session_state.pop(pending_grid_key, None)
+                st.session_state.pop(f"add_tsk_temp_desc_{round_id}", None)
+                return {"type": "empty_spot", "data": new_spot}
+        with bcols[1]:
+            if st.button(
+                "좌표 취소",
+                use_container_width=True,
+                key=f"add_tsk_temp_cancel_{round_id}",
+            ):
+                st.session_state.pop(pending_grid_key, None)
+                st.session_state.pop(f"add_tsk_temp_desc_{round_id}", None)
+
     st.caption(
-        "도면 위 파란 마커 = 추가 가능 장비 · 진회색 = 이미 포함된 장비 · "
-        "다이아 = 빈 spot(장비 없음, 클릭해 추가 가능)"
+        "🔵 파란 원 = 추가 가능 장비 · ⚫ 진회색 = 이미 포함 · "
+        "◇ 회색 다이아 = 빈 spot · 🔷 파란 다이아 = 임시 spot · "
+        "도면 빈 곳 클릭하면 임시 spot 좌표 픽업 (관리자 검증 후 정식)"
     )
     return None
 
@@ -538,9 +642,12 @@ def add_task_to_round_dialog(round_id: str) -> None:
         from lib.data import next_task_id, add_task, _refresh_round_status
         new_tsk = next_task_id()
         if sel_empty_spot is not None:
-            # 빈 spot 기반 — 장비 없이 spot 정보만 사용
+            # spot 기반 — 장비 없이 spot 정보만 사용 (임시/정식 구분)
+            spot_tag = (
+                "(임시 spot)" if sel_empty_spot.is_temporary else "(빈 spot)"
+            )
             equipment_label = (
-                f"{sel_empty_spot.spot_id} - {sel_empty_spot.room_name} (빈 spot)"
+                f"{sel_empty_spot.spot_id} - {sel_empty_spot.room_name} {spot_tag}"
             )
             floor = sel_empty_spot.floor
             zone = sel_empty_spot.room_name
