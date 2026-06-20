@@ -41,32 +41,18 @@ def floor_legend_html() -> str:
 def control_toggle(key: str, default_locked: bool = False) -> bool:
     """도면 위에 표시할 잠금/조작 토글. True=잠금, False=조작 가능.
 
-    same-cycle 토글: button 클릭 시 session_state + 지역 locked를 즉시 갱신해
-    같은 rerun에서 lock_overlay_css 분기와 호출 측 동작에 새 값이 반영된다.
-    라벨은 한 박자 늦게 갱신될 수 있으나 동작 자체는 즉시 새 상태로 적용.
-
-    NOTE: st.rerun() / on_click callback 모두 사용 금지 —
-    dialog 내부에서 호출 시 모달이 닫힌다.
+    st.toggle 위젯 사용 — 클릭 시 streamlit이 ON/OFF UI를 즉시 전환하고
+    같은 rerun에서 새 값을 반환. session_state에도 자동 저장(widget key 동일).
     """
-    state_key = f"floor_lock_{key}"
+    state_key = f"floor_lock_btn_{key}"
     if state_key not in st.session_state:
         st.session_state[state_key] = default_locked
-    locked = st.session_state[state_key]
-    # 동사형 라벨 — 클릭 시 무엇이 일어날지 명확히
-    label = "🔓 도면 풀기" if locked else "🔒 도면 잠그기"
-    help_txt = (
-        "현재 잠금 — pan/zoom 비활성, modebar 숨김. 클릭하면 풀림"
-        if locked else
-        "현재 조작 가능 — 휠/드래그로 줌·팬. 클릭하면 잠금"
+    locked = st.toggle(
+        "🔒 도면 잠금",
+        value=st.session_state[state_key],
+        key=state_key,
+        help="ON = 잠금(pan/zoom 비활성·modebar 숨김) / OFF = 조작 가능",
     )
-    if st.button(
-        label,
-        key=f"floor_lock_btn_{key}",
-        help=help_txt,
-        type="primary" if locked else "secondary",
-    ):
-        locked = not locked
-        st.session_state[state_key] = locked
     return locked
 
 
