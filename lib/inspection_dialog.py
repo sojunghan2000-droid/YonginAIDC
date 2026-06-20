@@ -259,27 +259,51 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         sizing="stretch", layer="below", opacity=1.0,
     ))
 
-    # 후보 장비 (도면 매칭 가능 = floor 일치 + 좌표 있음) — 파란 마커
+    # 후보 장비 (도면 매칭 가능 = floor 일치 + 좌표 있음)
+    # 매칭(점검 주기 일치) = 파란 / 비매칭 = 옅은 회색 (자유 추가)
     floor_cands = [c for c in candidates if c.floor == floor]
+    matched_set = {e.equipment_id for e in candidates
+                   if r.task_type in (e.inspection_types or [])}
     if floor_cands:
         spots = {s.spot_id: s for s in data.load_spots(floor)}
-        xs, ys, txts, custom = [], [], [], []
+        match_xs, match_ys, match_txt, match_cd = [], [], [], []
+        nomat_xs, nomat_ys, nomat_txt, nomat_cd = [], [], [], []
         for c in floor_cands:
             sp = spots.get(c.spot_id) if c.spot_id else None
             if not sp:
-                continue  # 좌표 없는 장비는 표시 불가
-            xs.append(sp.x_pct / 100 * FIG_W)
-            ys.append(FIG_H - sp.y_pct / 100 * FIG_H)
-            txts.append(c.equipment_id.split("-")[-1])
-            custom.append((c.equipment_id, c.equipment_name, c.location_id))
-        if xs:
+                continue
+            x = sp.x_pct / 100 * FIG_W
+            y = FIG_H - sp.y_pct / 100 * FIG_H
+            txt = c.equipment_id.split("-")[-1]
+            cd = (c.equipment_id, c.equipment_name, c.location_id)
+            if c.equipment_id in matched_set:
+                match_xs.append(x); match_ys.append(y)
+                match_txt.append(txt); match_cd.append(cd)
+            else:
+                nomat_xs.append(x); nomat_ys.append(y)
+                nomat_txt.append(txt); nomat_cd.append(cd)
+        if nomat_xs:
             fig.add_trace(go.Scatter(
-                x=xs, y=ys, mode="markers+text",
-                text=txts, textposition="top center",
+                x=nomat_xs, y=nomat_ys, mode="markers+text",
+                text=nomat_txt, textposition="top center",
+                textfont=dict(size=10, color="#475569"),
+                marker=dict(size=16, color="#CBD5E1",
+                            line=dict(color="#94A3B8", width=1.5)),
+                customdata=nomat_cd,
+                hovertemplate=(
+                    "<b>%{customdata[1]}</b> (매핑 외 · 자유 추가)<br>"
+                    "%{customdata[2]} · %{customdata[0]}<extra></extra>"
+                ),
+                name="매핑 외", showlegend=False,
+            ))
+        if match_xs:
+            fig.add_trace(go.Scatter(
+                x=match_xs, y=match_ys, mode="markers+text",
+                text=match_txt, textposition="top center",
                 textfont=dict(size=10, color="#0F172A"),
                 marker=dict(size=18, color="#2563EB",
                             line=dict(color="#FFFFFF", width=2)),
-                customdata=custom,
+                customdata=match_cd,
                 hovertemplate=(
                     "<b>%{customdata[1]}</b><br>"
                     "%{customdata[2]} · %{customdata[0]}<extra></extra>"
@@ -523,8 +547,8 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         )
     else:
         st.caption(
-            "🔵 파란 원 = 추가 가능 장비 · ⚫ 진회색 = 이미 포함 · "
-            "◇ 회색 다이아 = 빈 spot · 🔷 파란 다이아 = 임시 spot · "
+            "🔵 파란 원 = 매칭 장비 · ⚪ 옅은 회색 원 = 매핑 외(자유 추가) · "
+            "⚫ 진회색 = 이미 포함 · ◇ 회색 다이아 = 빈 spot · 🔷 파란 다이아 = 임시 spot · "
             "임시 위치를 새로 만들려면 상단 토글 활성화"
         )
     return None
@@ -547,28 +571,25 @@ def add_task_to_round_dialog(round_id: str) -> None:
         unsafe_allow_html=True,
     )
 
-    # 회차의 점검 유형에 맞는 장비 후보
+    # 후보 = 회차 미포함 장비 전체 (점검 주기 매칭 무관, v1.5+ 자유화)
+    # 매칭 장비는 우선 정렬, 비매칭은 별도 표기로 인지 가능
     all_eq = data.load_equipment()
-    if r.task_type in TASK_INSPECTION_TYPES:
-        candidates = [
-            e for e in all_eq if r.task_type in (e.inspection_types or [])
-        ]
-    else:
-        candidates = all_eq
 
     # 이미 회차에 포함된 장비는 후보에서 제외 (location_id 기준)
     already_locs = {
         t.equipment_label.split(" - ")[0].strip()
         for t in data.tasks_of_round(round_id, include_excluded=True)
     }
-    candidates = [c for c in candidates if c.location_id not in already_locs]
 
-    if not candidates:
-        st.info(
-            f"이 점검 유형에 매핑된 장비 중 '회차에 미포함'인 후보가 없습니다. "
-            "장비 마스터의 inspection_types를 확인하세요."
-        )
-        return
+    def _is_match(e):
+        return (r.task_type in TASK_INSPECTION_TYPES
+                and r.task_type in (e.inspection_types or []))
+
+    matched = [e for e in all_eq
+               if e.location_id not in already_locs and _is_match(e)]
+    unmatched = [e for e in all_eq
+                 if e.location_id not in already_locs and not _is_match(e)]
+    candidates = matched + unmatched  # 매칭 우선 정렬
 
     # 진입 방식 — 직접 선택 / QR 스캔 / 📍 도면 선택 (모바일 친화)
     tab_pick, tab_qr, tab_map = st.tabs(["직접 선택", "QR 스캔", "📍 도면 선택"])
@@ -576,9 +597,10 @@ def add_task_to_round_dialog(round_id: str) -> None:
     sel_empty_spot = None  # Spot (빈 spot 기반 추가)
     with tab_pick:
         eq_idx = st.selectbox(
-            "추가할 장비",
+            "추가할 장비 (매칭 우선 · 매핑 외 장비도 자유 추가 가능)",
             options=range(len(candidates)),
             format_func=lambda i: (
+                f"{'✓' if _is_match(candidates[i]) else '·'} "
                 f"{candidates[i].location_id} · {candidates[i].equipment_name} "
                 f"({candidates[i].category})"
             ),

@@ -399,8 +399,8 @@ def render() -> None:
                 unsafe_allow_html=True,
             )
         with cols[6]:
-            if st.button("상세", key=f"rnd_open_{r.round_id}",
-                         use_container_width=True):
+            if st.button("점검", key=f"rnd_open_{r.round_id}",
+                         use_container_width=True, type="primary"):
                 open_detail = r.round_id
 
     if open_detail:
