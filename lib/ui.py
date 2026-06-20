@@ -545,7 +545,7 @@ def _render_help_button() -> None:
 def _render_notify_button() -> None:
     """상단바 알림 벨 — st.button을 fixed position으로 띄움.
     실데이터 기반(조치 대기 통보서 + 지연 태스크) 카운트 표시.
-    클릭 시 지적·오동작 관리(조치 대기 필터)로 이동."""
+    클릭 시 _notify_dialog() 팝업 오픈 (항목별 [이동 →] 버튼으로 라우팅)."""
     pending, overdue = _notify_count()
     total = pending + overdue
     if total == 0:
@@ -556,12 +556,100 @@ def _render_notify_button() -> None:
         title = f"조치 대기 {pending}건 · 지연 태스크 {overdue}건"
 
     if st.button(label, key="notify_btn", help=title):
-        st.session_state["page"] = "deficiencies"
-        st.session_state["unified_type"] = "조치 대기만"
-        st.rerun()
+        _notify_dialog()
 
     # 카운트가 1+일 때만 빨강 강조 클래스 토글
     _toggle_body_class("ps-has-alerts", total > 0)
+
+
+@st.dialog("알림", width="large")
+def _notify_dialog() -> None:
+    """알림 상세 — 조치 대기 통보서 + 지연 태스크 리스트. 각 행에 [이동 →]."""
+    from lib import data  # 순환 import 회피
+    notices = [n for n in data.load_notices() if not n.action_done]
+    tasks = [t for t in data.load_tasks() if t.status == "Overdue"]
+    total = len(notices) + len(tasks)
+    st.markdown(
+        f"<div style='color:#64748B; font-size:0.88rem; margin-bottom:0.6rem;'>"
+        f"총 <b>{total}건</b> · 조치 대기 통보서 {len(notices)} · 지연 태스크 {len(tasks)}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if total == 0:
+        st.info("현재 알림이 없습니다.")
+        return
+
+    # ─ 조치 대기 통보서 ─
+    if notices:
+        st.markdown(
+            "<div style='font-weight:700; color:#0F172A; font-size:1rem; "
+            "margin:0.4rem 0 0.3rem;'>조치 대기 통보서</div>",
+            unsafe_allow_html=True,
+        )
+        for n in notices:
+            with st.container(border=True):
+                head_col, btn_col = st.columns([3, 1])
+                with head_col:
+                    st.markdown(
+                        f"<div style='font-weight:600; color:#0F172A;'>"
+                        f"{n.notice_no} · {n.floor}/{n.zone} · {n.inspection_type}"
+                        f"</div>"
+                        f"<div style='color:#334155; font-size:0.9rem; "
+                        f"margin-top:0.2rem;'>{n.issue}</div>"
+                        f"<div style='color:#64748B; font-size:0.78rem; "
+                        f"margin-top:0.2rem;'>"
+                        f"제출자 {n.submitter} · 확인자 {n.confirmer} · "
+                        f"발급일 {fmt_date(n.inspection_date)}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with btn_col:
+                    if st.button("이동 →", key=f"notify_goto_n_{n.notice_no}",
+                                 type="primary", use_container_width=True):
+                        st.session_state["page"] = "deficiencies"
+                        st.session_state["unified_type"] = "조치 대기만"
+                        st.session_state["focus_notice"] = n.notice_no
+                        st.rerun()
+
+    # ─ 지연 태스크 ─
+    if tasks:
+        st.markdown(
+            "<div style='font-weight:700; color:#0F172A; font-size:1rem; "
+            "margin:0.7rem 0 0.3rem;'>지연 태스크</div>",
+            unsafe_allow_html=True,
+        )
+        for t in tasks:
+            today = data.TODAY
+            try:
+                delta = (today - t.due_date).days
+            except Exception:
+                delta = None
+            delta_html = (
+                f" <span style='color:#DC2626; font-weight:600;'>"
+                f"(-{delta}일 지연)</span>" if delta and delta > 0 else ""
+            )
+            with st.container(border=True):
+                head_col, btn_col = st.columns([3, 1])
+                with head_col:
+                    st.markdown(
+                        f"<div style='font-weight:600; color:#0F172A;'>"
+                        f"{t.task_id} · {t.equipment_label}</div>"
+                        f"<div style='color:#334155; font-size:0.9rem; "
+                        f"margin-top:0.2rem;'>{t.task_type}</div>"
+                        f"<div style='color:#64748B; font-size:0.78rem; "
+                        f"margin-top:0.2rem;'>"
+                        f"담당 {t.assignee or '미지정'} · 마감 "
+                        f"{fmt_date(t.due_date)}{delta_html}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with btn_col:
+                    if st.button("이동 →", key=f"notify_goto_t_{t.task_id}",
+                                 type="primary", use_container_width=True):
+                        st.session_state["page"] = "tasks"
+                        st.session_state["tasks_view"] = "지연"
+                        st.session_state["focus_task"] = t.task_id
+                        st.rerun()
 
 
 def _render_avatar_menu() -> None:

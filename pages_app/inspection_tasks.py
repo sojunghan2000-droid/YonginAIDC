@@ -65,6 +65,7 @@ def render() -> None:
             ["전체", "진행 중", "예정", "지연"],
             horizontal=True,
             label_visibility="collapsed",
+            key="tasks_view",
         )
     with filter_col:
         type_filter = st.selectbox(
