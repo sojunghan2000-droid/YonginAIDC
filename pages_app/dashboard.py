@@ -390,13 +390,133 @@ def _grid_tab() -> None:
 
 
 def render() -> None:
-    page_header(
-        "대시보드",
-        f"용인덕성 AI DC 소방안전 점검 통합 현황 · {data.TODAY.isoformat()}.",
-    )
+    # 헤더 + 점검 버튼을 한 줄에 (점검은 우측)
+    h_col, b_col = st.columns([3, 1])
+    with h_col:
+        page_header(
+            "대시보드",
+            f"용인덕성 AI DC 소방안전 점검 통합 현황 · {data.TODAY.isoformat()}.",
+        )
+    with b_col:
+        # 헤더 높이 보정 (page_header의 상단 마진과 맞춤)
+        st.markdown("<div style='height:1.5rem;'></div>", unsafe_allow_html=True)
+        if st.button("📷 점검 (QR 스캔)", type="primary",
+                     use_container_width=True, key="open_inspect_qr"):
+            _inspect_qr_dialog()
 
     tab_summary, tab_grid = st.tabs(["현황 요약", "Location"])
     with tab_summary:
         _summary_tab()
     with tab_grid:
         _grid_tab()
+
+
+# ---- 점검 QR 스캔 모달 ----
+
+@st.dialog("점검 시작", width="large")
+def _inspect_qr_dialog() -> None:
+    """3개 작업 카드 라디오 + QR 라이브 스캐너 (후면 카메라).
+    QR 디코딩 결과로 equipment_id를 추출해 해당 모달 자동 오픈."""
+    notices = data.load_notices()
+    pending_notices = sum(1 for n in notices if not n.action_done)
+
+    st.markdown(
+        "<div style='color:#64748B; font-size:0.9rem; margin-bottom:0.5rem;'>"
+        "작업 유형을 선택한 뒤 장비의 QR 코드를 카메라에 비춰주세요. "
+        "인식되면 해당 장비의 점검 화면으로 자동 이동합니다."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    actions = [
+        ("지적 입력", "신규 점검 결과 입력 (양호/불량 · 통보서 발급)", True),
+        ("조치 입력",
+         f"발급된 통보서의 후속 조치 ({pending_notices}건 대기)",
+         pending_notices > 0),
+        ("오동작 등록", "별지9 소방시설 오동작 관리대장 row 추가", True),
+    ]
+    # 비활성 옵션은 라디오에서 제외 + 안내
+    enabled = [a for a in actions if a[2]]
+    disabled = [a for a in actions if not a[2]]
+
+    sel = st.radio(
+        "작업 유형",
+        options=[a[0] for a in enabled],
+        captions=[a[1] for a in enabled],
+        key="inspect_qr_action",
+    )
+    for label, desc, _ in disabled:
+        st.caption(f"· {label} — {desc} (현재 조치할 항목이 없어 비활성)")
+
+    st.markdown("<div style='height:0.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-weight:600; color:#0F172A; font-size:0.92rem; "
+        "margin-bottom:0.3rem;'>QR 스캐너 (후면 카메라)</div>"
+        "<div style='color:#94A3B8; font-size:0.78rem; margin-bottom:0.4rem;'>"
+        "처음 1회 카메라 권한을 허용해 주세요. 모바일에서는 후면 카메라가 자동 선택됩니다."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # streamlit-qrcode-scanner — 라이브 카메라 + QR 디코드
+    try:
+        from streamlit_qrcode_scanner import qrcode_scanner
+        qr = qrcode_scanner(key="inspect_qr_scanner")
+    except Exception as e:
+        st.error(
+            f"QR 스캐너를 불러올 수 없습니다 ({e}). 아래에 장비 ID를 직접 입력해주세요."
+        )
+        qr = None
+
+    # 수동 ID 입력 fallback
+    manual = st.text_input(
+        "수동 입력 (선택) — 장비 ID 또는 QR 페이로드 URL",
+        key="inspect_qr_manual",
+        placeholder="예: EQ-0006",
+    )
+
+    eq_id = _extract_equipment_id(qr) if qr else _extract_equipment_id(manual)
+    if eq_id:
+        eq = next(
+            (x for x in data.load_equipment() if x.equipment_id == eq_id),
+            None,
+        )
+        if eq is None:
+            st.error(f"장비를 찾을 수 없습니다: {eq_id}")
+            return
+        # 라우팅 + 자동 모달 오픈 세션 키 세팅
+        st.success(
+            f"인식: {eq.equipment_id} · {eq.equipment_name} ({eq.location_id})"
+        )
+        if st.button("이 장비 점검 시작 →", type="primary",
+                     use_container_width=True, key="inspect_qr_route"):
+            st.session_state["inspect_target"] = eq.equipment_id
+            if sel == "지적 입력":
+                st.session_state["page"] = "deficiencies"
+                st.session_state["_open_inspect_dialog"] = True
+            elif sel == "조치 입력":
+                # 점검 작업 페이지 (focus_notice는 페이지가 자동 처리)
+                st.session_state["page"] = "inspection"
+                st.session_state["focus_equipment"] = eq.equipment_id
+            else:  # 오동작 등록
+                st.session_state["page"] = "deficiencies"
+                st.session_state["_open_malfunction_dialog"] = True
+            st.rerun()
+
+
+def _extract_equipment_id(payload: str | None) -> str | None:
+    """QR 페이로드(URL 또는 ID)에서 equipment_id 추출.
+    형식 예: 'https://.../inspect?eq=EQ-0006' 또는 'EQ-0006'."""
+    if not payload:
+        return None
+    s = str(payload).strip()
+    # URL의 ?eq= 또는 &eq= 부분 추출
+    import re
+    m = re.search(r"[?&]eq=([A-Za-z0-9\-]+)", s)
+    if m:
+        return m.group(1).upper()
+    # EQ-NNNN 패턴 직접 매칭
+    m = re.search(r"\bEQ-\d{4,}\b", s.upper())
+    if m:
+        return m.group(0)
+    return None

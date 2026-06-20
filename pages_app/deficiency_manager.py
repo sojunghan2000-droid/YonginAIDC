@@ -126,6 +126,7 @@ def render() -> None:
         )
     # 외부에서 설정된 트리거 (QR deeplink / 시설 관리에서 진입)
     auto_open = st.session_state.get("_open_inspect_dialog", False)
+    auto_open_mal = st.session_state.get("_open_malfunction_dialog", False)
     insp_clicked = False
     mal_clicked = False
 
@@ -148,7 +149,8 @@ def render() -> None:
     if auto_open or insp_clicked:
         st.session_state["_open_inspect_dialog"] = False
         new_inspection_dialog()
-    elif mal_clicked:
+    elif auto_open_mal or mal_clicked:
+        st.session_state["_open_malfunction_dialog"] = False
         malfunction_dialog()
 
     # KPI
