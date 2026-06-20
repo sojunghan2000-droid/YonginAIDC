@@ -711,8 +711,8 @@ def _render_avatar_menu() -> None:
 NAV_PAGES = [
     ("dashboard", "대시보드"),
     ("equipment", "시설 관리"),
-    ("tasks", "점검 일정"),
-    ("deficiencies", "지적·오동작 관리"),
+    ("tasks", "안전점검"),
+    ("deficiencies", "작업 조치 관리"),
     ("reports", "보고서"),
 ]
 

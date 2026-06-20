@@ -136,7 +136,8 @@ class InspectionRound:
 
 @dataclass
 class Deficiency:
-    """별지5 안전점검 결과 지적내역서 row."""
+    """별지5 안전점검 결과 지적내역서 row.
+    v1.5: 별지6 통보서의 조치 단계 필드를 흡수 (action_*, submitter)."""
     deficiency_id: str
     inspection_date: date
     inspector: str
@@ -147,7 +148,13 @@ class Deficiency:
     resolution: ResolutionStatus
     confirmer: str | None
     notice_no: str | None
-    task_id: str | None = None  # v1.4: 점검 회차의 Task에 자동 매핑
+    task_id: str | None = None
+    # v1.5: 조치 단계 (별지6 흡수)
+    action_done: bool = False
+    action_at: date | None = None
+    action_note: str = ""
+    action_photo_path: str | None = None
+    submitter: str | None = None
 
 
 @dataclass
@@ -291,6 +298,11 @@ def _row_to_deficiency(r: dict) -> Deficiency:
         issue=r["issue"], resolution=r["resolution"],
         confirmer=r.get("confirmer"), notice_no=r.get("notice_no"),
         task_id=r.get("task_id"),
+        action_done=bool(r.get("action_done") or False),
+        action_at=_d(r.get("action_at")),
+        action_note=r.get("action_note") or "",
+        action_photo_path=r.get("action_photo_path"),
+        submitter=r.get("submitter"),
     )
 
 
@@ -632,7 +644,36 @@ def add_deficiency(d: Deficiency) -> None:
         "issue": d.issue, "resolution": d.resolution,
         "confirmer": d.confirmer, "notice_no": d.notice_no,
         "task_id": d.task_id,
+        "action_done": d.action_done,
+        "action_at": _iso(d.action_at),
+        "action_note": d.action_note,
+        "action_photo_path": d.action_photo_path,
+        "submitter": d.submitter,
     }).execute()
+    _deficiency_rows.clear()
+
+
+def record_deficiency_action(
+    deficiency_id: str, action_at: date, action_note: str,
+    confirmer: str, photo: bytes | None,
+) -> None:
+    """별지5 지적사항에 조치 단계 기록 (구 별지6 통보서 조치 흡수).
+    사진은 action-photos 버킷에 업로드."""
+    photo_path = None
+    if photo:
+        # 통보서 사진 키 컨벤션 재사용 (deficiency_id로 저장)
+        photo_path = _upload_action_photo(deficiency_id, photo)
+    payload = {
+        "action_done": True,
+        "action_at": _iso(action_at),
+        "action_note": action_note,
+        "confirmer": confirmer,
+    }
+    if photo_path:
+        payload["action_photo_path"] = photo_path
+    _db().table("deficiencies").update(payload).eq(
+        "deficiency_id", deficiency_id
+    ).execute()
     _deficiency_rows.clear()
 
 

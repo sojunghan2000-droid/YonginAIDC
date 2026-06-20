@@ -31,22 +31,23 @@ class UnifiedRow:
 
 
 def _build_unified_rows() -> list[UnifiedRow]:
-    """별지5/9 데이터를 통합 row 리스트로 변환. 별지6 통보서 정보는 별지5 row에 inline."""
+    """별지5 지적사항(조치 단계 흡수) + 별지9 오동작을 통합 row로 변환.
+    v1.5: 별지6 Notice 의존 제거 — Deficiency 자체 action_* 필드만 사용."""
     rows: list[UnifiedRow] = []
-    notice_map = {n.notice_no: n for n in data.load_notices()}
 
-    # 별지5 지적사항 — 통보서가 있으면 후속조치 상태 inline 표시
+    # 별지5 지적사항 — 조치 단계는 Deficiency 자체에서 (구 별지6 흡수)
     for d in data.load_deficiencies():
-        notice = notice_map.get(d.notice_no) if d.notice_no else None
-        if d.resolution == "완료":
-            # 양호 또는 현장 즉시 조치 완료
+        if d.resolution == "완료" and not d.notice_no:
+            # 양호 결과만 등록된 행 (불량 아님)
             status = "완료"
-        elif notice and notice.action_done:
-            status = "조치 완료"
-        elif notice:
+        elif d.action_done:
+            # 현장 즉시 조치 또는 후속 조치 완료
+            status = "조치 완료" if d.notice_no else "완료"
+        elif d.notice_no:
+            # 통보서 발급됐고 미조치
             status = "조치 대기"
         else:
-            status = "불가"  # 통보서 매칭 안 됨 (legacy)
+            status = d.resolution
 
         rows.append(UnifiedRow(
             type="지적사항",
@@ -57,7 +58,7 @@ def _build_unified_rows() -> list[UnifiedRow]:
             status=status,
             notice_no=d.notice_no or "-",
             raw_id=d.deficiency_id,
-            action_done=notice.action_done if notice else False,
+            action_done=d.action_done,
             task_id=d.task_id or "-",
         ))
 
@@ -125,8 +126,8 @@ def render() -> None:
     title_col, action_col = st.columns([2.5, 1.5])
     with title_col:
         page_header(
-            "지적·오동작 관리",
-            "별지5 지적사항 + 별지6 통보서 + 별지9 오동작을 한 페이지에서 통합 관리합니다.",
+            "작업 조치 관리",
+            "별지5 지적사항의 조치 단계를 처리하고 별지9 오동작을 관리합니다.",
         )
     # 외부에서 설정된 트리거 (QR deeplink / 시설 관리에서 진입)
     auto_open = st.session_state.get("_open_inspect_dialog", False)
