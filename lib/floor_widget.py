@@ -42,6 +42,10 @@ def control_toggle(key: str, default_locked: bool = False) -> bool:
     """도면 위에 표시할 잠금/조작 토글. True=잠금(staticPlot), False=조작 가능.
 
     session_state[key]에 상태 저장. 호출 측에서 plotly_chart config에 반영.
+
+    NOTE: st.rerun() 명시 호출 금지 — dialog 내부에서 호출 시 모달이 닫힘.
+    streamlit의 button 클릭은 자체적으로 rerun을 트리거하므로 불필요.
+    같은 rerun 내에서 토글값을 즉시 반영하기 위해 locked 변수도 갱신해 반환.
     """
     state_key = f"floor_lock_{key}"
     if state_key not in st.session_state:
@@ -55,8 +59,8 @@ def control_toggle(key: str, default_locked: bool = False) -> bool:
               if locked else
               "조작 가능 — 휠/드래그로 줌·팬. 클릭하면 잠금 모드"),
     ):
-        st.session_state[state_key] = not locked
-        st.rerun()
+        locked = not locked
+        st.session_state[state_key] = locked
     return locked
 
 
