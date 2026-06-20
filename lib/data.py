@@ -200,8 +200,15 @@ def _db() -> Client:
 
 
 def _d(s: str | None) -> date | None:
-    """ISO 문자열 → date (None 허용)."""
-    return date.fromisoformat(s) if s else None
+    """ISO 문자열 → date (None 허용).
+    Supabase는 timestamptz 컬럼을 '2026-06-20T00:00:00+00:00' 형태로 반환하는데
+    date.fromisoformat은 timezone offset을 못 받으므로 datetime 부분을 잘라낸다."""
+    if not s:
+        return None
+    # 'T' 또는 공백이 있으면 datetime 형식 — 앞 10글자(YYYY-MM-DD)만 사용
+    if "T" in s or " " in s:
+        return date.fromisoformat(s[:10])
+    return date.fromisoformat(s)
 
 
 def _iso(d: date | None) -> str | None:
