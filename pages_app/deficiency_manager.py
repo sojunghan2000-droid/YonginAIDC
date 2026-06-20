@@ -13,8 +13,8 @@ from lib.inspection_dialog import (
 from lib.ui import badge, fmt_date, page_header, render_kpi_row
 
 
-# 통합 row 컬럼 비율 — 작업 ID 컬럼 추가
-COL_RATIOS = [0.9, 1.0, 1.0, 1.3, 2.2, 1.0, 1.1, 1.0, 1.1]
+# 통합 row 컬럼 비율 — 점검 ID + 작업 ID 컬럼 포함 (10개)
+COL_RATIOS = [0.9, 1.0, 1.0, 1.3, 2.0, 1.0, 1.0, 1.1, 1.0, 1.1]
 
 
 @dataclass
@@ -30,12 +30,17 @@ class UnifiedRow:
     raw_id: str         # 원본 식별자 (조치 버튼 key용)
     action_done: bool   # 조치 완료 여부 (별지6만 의미 있음)
     task_id: str        # v1.4: 회차 Task 매핑 (없으면 "-")
+    round_id: str       # v1.5+: 점검 ID (task → round_id, 없으면 "-")
 
 
 def _build_unified_rows() -> list[UnifiedRow]:
     """별지5 지적사항(조치 단계 흡수) + 별지9 오동작을 통합 row로 변환.
-    v1.5: 별지6 Notice 의존 제거 — Deficiency 자체 action_* 필드만 사용."""
+    v1.5: 별지6 Notice 의존 제거 — Deficiency 자체 action_* 필드만 사용.
+    v1.5+: task_id → round_id 매핑으로 '점검 ID' 컬럼도 채움."""
     rows: list[UnifiedRow] = []
+
+    # task_id → round_id (점검 ID) lookup 한 번만 로드
+    task_round_map = {t.task_id: (t.round_id or "") for t in data.load_tasks()}
 
     # 별지5 지적사항 — 조치 단계는 Deficiency 자체에서 (구 별지6 흡수)
     for d in data.load_deficiencies():
@@ -62,6 +67,7 @@ def _build_unified_rows() -> list[UnifiedRow]:
             raw_id=d.deficiency_id,
             action_done=d.action_done,
             task_id=d.task_id or "-",
+            round_id=(task_round_map.get(d.task_id, "") or "-") if d.task_id else "-",
         ))
 
     # 별지9 오동작 (별도 row 유지)
@@ -77,6 +83,7 @@ def _build_unified_rows() -> list[UnifiedRow]:
             raw_id=m.malfunction_id,
             action_done=False,
             task_id=m.task_id or "-",
+            round_id=(task_round_map.get(m.task_id, "") or "-") if m.task_id else "-",
         ))
 
     rows.sort(key=lambda r: r.date, reverse=True)
@@ -115,6 +122,7 @@ def _table_header() -> str:
         "<div>내용</div>"
         "<div>상태</div>"
         "<div>통보서 번호</div>"
+        "<div>점검 ID</div>"
         "<div>작업 ID</div>"
         "<div>작업</div>"
         "</div>"
@@ -255,12 +263,19 @@ def render() -> None:
                 unsafe_allow_html=True,
             )
         with cols[7]:
+            rid_color = "#1D4ED8" if r.round_id != "-" else "#94A3B8"
+            st.markdown(
+                f"<span style='color:{rid_color}; font-size:0.82rem; "
+                f"font-weight:600;'>{r.round_id}</span>",
+                unsafe_allow_html=True,
+            )
+        with cols[8]:
             tid_color = "#334155" if r.task_id != "-" else "#94A3B8"
             st.markdown(
                 f"<span style='color:{tid_color}; font-size:0.85rem;'>{r.task_id}</span>",
                 unsafe_allow_html=True,
             )
-        with cols[8]:
+        with cols[9]:
             # 조치 대기 row에만 "조치 입력 →" 버튼 — 직접 모달 호출
             if r.status == "조치 대기" and r.type == "지적사항":
                 if st.button("조치 입력 →", key=f"act_{r.type}_{r.raw_id}",
