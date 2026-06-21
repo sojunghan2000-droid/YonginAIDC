@@ -122,6 +122,9 @@ def _round_detail_dialog(round_id: str) -> None:
         st.markdown("<hr style='margin:0.2rem 0; border-color:#E2E8F0;'>",
                     unsafe_allow_html=True)
 
+        # Task → Deficiency 매핑 (Completed Task 결과 카드 노출용)
+        def_by_task = {d.task_id: d for d in round_defs if d.task_id}
+
         for t in tasks_active:
             row = st.columns(cols_ratio, vertical_alignment="center")
             row[0].markdown(
@@ -183,6 +186,48 @@ def _round_detail_dialog(round_id: str) -> None:
                             )
                             st.session_state["round_dlg_exclude_open"] = None
                             st.success(f"{t.task_id} 점검 대상에서 제외했습니다.")
+
+            # Completed Task의 점검 결과 inline 카드
+            if t.status == "Completed":
+                d = def_by_task.get(t.task_id)
+                if d:
+                    is_good = (d.resolution == "완료" and not d.notice_no)
+                    badge_color = "#16A34A" if is_good else "#DC2626"
+                    badge_bg = "#DCFCE7" if is_good else "#FEE2E2"
+                    badge_txt = "양호" if is_good else "불량"
+                    types_str = ", ".join(d.inspection_types) if d.inspection_types else "-"
+                    insp_date = fmt_date(d.inspection_date) if d.inspection_date else "-"
+
+                    extra_html = ""
+                    if not is_good and d.issue:
+                        extra_html += (
+                            f"<div style='margin-top:0.3rem; color:#92400E; "
+                            f"font-size:0.83rem;'>"
+                            f"⚠️ <b>지적사항:</b> {d.issue}</div>"
+                        )
+                    if d.action_done and d.action_note:
+                        extra_html += (
+                            f"<div style='margin-top:0.2rem; color:#15803D; "
+                            f"font-size:0.83rem;'>"
+                            f"✅ <b>현장 즉시 조치:</b> {d.action_note}"
+                            f"{' · 확인자 ' + d.confirmer if d.confirmer else ''}</div>"
+                        )
+
+                    st.markdown(
+                        f"<div style='margin:0.2rem 0 0.4rem 1.2rem; "
+                        f"padding:0.5rem 0.7rem; background:#F8FAFC; "
+                        f"border-left:3px solid {badge_color}; border-radius:6px;'>"
+                        f"<span style='background:{badge_bg}; color:{badge_color}; "
+                        f"padding:0.1rem 0.5rem; border-radius:999px; "
+                        f"font-size:0.75rem; font-weight:700;'>{badge_txt}</span> "
+                        f"<span style='color:#475569; font-size:0.83rem; "
+                        f"margin-left:0.5rem;'>"
+                        f"{d.inspector or '-'} · {insp_date} · "
+                        f"점검종류: {types_str}</span>"
+                        f"{extra_html}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
 
     # 제외 로그
     if excluded:
