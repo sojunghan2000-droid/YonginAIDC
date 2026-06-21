@@ -1053,7 +1053,7 @@ def task_inspect_inline(task_id: str) -> None:
         unsafe_allow_html=True,
     )
     result = st.radio(
-        "결과", ["양호", "불량"], horizontal=True,
+        "결과", ["양호", "불량", "오동작"], horizontal=True,
         label_visibility="collapsed", key=f"tsk_res_{task_id}",
     )
 
@@ -1062,6 +1062,40 @@ def task_inspect_inline(task_id: str) -> None:
     action_note_now = ""
     action_photo_now = None
     confirmer_value = inspector
+
+    # 오동작 입력 영역 (v1.5+)
+    mal_category = (eq.category if eq else "기타")
+    mal_detail = ""
+    mal_occurred = inspect_date
+    if result == "오동작":
+        st.caption(
+            "⚠ 시설 자체의 오작동을 별지9에 기록합니다. "
+            "조치는 [작업 조치 관리]에서 별도 시점에 입력하세요."
+        )
+        mc1, mc2 = st.columns([1, 1])
+        with mc1:
+            from lib.data import MAL_CATEGORIES_TEMP, MAL_CATEGORIES_OTHER
+            all_mal_cats = list(MAL_CATEGORIES_TEMP) + list(MAL_CATEGORIES_OTHER)
+            default_idx = (
+                all_mal_cats.index(mal_category)
+                if mal_category in all_mal_cats else 0
+            )
+            mal_category = st.selectbox(
+                "시설구분 (별지9)",
+                options=all_mal_cats,
+                index=default_idx,
+                key=f"tsk_mal_cat_{task_id}",
+            )
+        with mc2:
+            mal_occurred = st.date_input(
+                "발생일자", value=inspect_date,
+                key=f"tsk_mal_date_{task_id}",
+            )
+        mal_detail = st.text_area(
+            "오동작 내용",
+            placeholder="예: 점등 불량, 충수 상태 불량, 오작동 등",
+            key=f"tsk_mal_detail_{task_id}",
+        )
 
     if result == "불량":
         issue = st.text_area(
@@ -1102,6 +1136,36 @@ def task_inspect_inline(task_id: str) -> None:
         use_container_width=True,
         key=f"tsk_submit_{task_id}",
     ):
+        if result == "오동작":
+            if not mal_detail.strip():
+                st.error("오동작 내용을 입력해 주세요.")
+                return
+            # 오동작은 별지9에 등록, Deficiency 생성 X
+            from lib.data import next_malfunction_id, Malfunction, _db, _task_rows, _refresh_round_status
+            new_mid = next_malfunction_id()
+            data.add_malfunction(Malfunction(
+                malfunction_id=new_mid,
+                category=mal_category,  # type: ignore[arg-type]
+                occurred_on=mal_occurred,
+                detail=mal_detail.strip(),
+                action="",
+                confirmer=inspector,
+                task_id=t.task_id,
+                action_done=False,
+            ))
+            # Task → Completed + 회차 status 자동 재계산
+            _db().table("inspection_tasks").update(
+                {"status": "Completed"}
+            ).eq("task_id", t.task_id).execute()
+            _task_rows.clear()
+            if t.round_id:
+                _refresh_round_status(t.round_id)
+            st.session_state.pop("round_inline_start_for", None)
+            st.session_state["just_completed_task"] = t.task_id
+            st.session_state["just_submitted_malfunction"] = True
+            st.rerun()
+            return
+
         if not types_selected:
             st.error("점검 종류를 1개 이상 선택해 주세요.")
             return

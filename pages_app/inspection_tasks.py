@@ -145,7 +145,43 @@ def _round_detail_dialog(round_id: str) -> None:
             )
             # 결과 컬럼 — Completed Task에만 inline 결과 카드 (한 행 안에 모든 정보)
             with row[4]:
-                if t.status == "Completed":
+                # 오동작 우선 확인 (Malfunction)
+                mal_match = (
+                    next(
+                        (m for m in data.load_malfunctions()
+                         if m.task_id == t.task_id), None,
+                    )
+                    if t.status == "Completed" else None
+                )
+                if mal_match:
+                    m = mal_match
+                    mal_status = "조치 완료" if m.action_done else "조치 대기"
+                    extra = (
+                        f"<div style='color:#92400E; font-size:0.78rem; "
+                        f"margin-top:0.15rem;'>⚠️ {m.detail}</div>"
+                    )
+                    if m.action_done and m.action_note:
+                        extra += (
+                            f"<div style='color:#15803D; font-size:0.78rem; "
+                            f"margin-top:0.1rem;'>✅ {m.action_note}</div>"
+                        )
+                    st.markdown(
+                        f"<div style='padding:0.35rem 0.55rem; background:#F8FAFC; "
+                        f"border-left:3px solid #DC2626; border-radius:6px;'>"
+                        f"<span style='background:#FEE2E2; color:#DC2626; "
+                        f"padding:0.05rem 0.45rem; border-radius:999px; "
+                        f"font-size:0.72rem; font-weight:700;'>오동작</span> "
+                        f"<span style='background:#FEF3C7; color:#92400E; "
+                        f"padding:0.05rem 0.4rem; border-radius:999px; "
+                        f"font-size:0.7rem; font-weight:600; margin-left:0.2rem;'>"
+                        f"{mal_status}</span>"
+                        f"<span style='color:#475569; font-size:0.78rem; "
+                        f"margin-left:0.3rem;'>"
+                        f"{m.confirmer or '-'} · {fmt_date(m.occurred_on)} · {m.category}"
+                        f"</span>{extra}</div>",
+                        unsafe_allow_html=True,
+                    )
+                elif t.status == "Completed":
                     d = def_by_task.get(t.task_id)
                     if d:
                         is_good = (d.resolution == "완료" and not d.notice_no)
