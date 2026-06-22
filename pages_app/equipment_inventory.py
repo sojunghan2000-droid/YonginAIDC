@@ -362,7 +362,10 @@ def render() -> None:
             )
 
     if st.session_state.pop("just_submitted_equipment", False):
-        st.success("새 장비가 등록되었습니다. 테이블에서 QR을 확인하고 라벨을 인쇄하세요.")
+        st.success(
+            "새 장비가 등록되었습니다 (QR 상태: PENDING). "
+            "보고서에서 QR 스티커 PDF 출력 → 현장 부착 → 첫 스캔 시 ASSIGNED로 자동 전환됩니다."
+        )
 
     if eq_btn_clicked:
         equipment_dialog()

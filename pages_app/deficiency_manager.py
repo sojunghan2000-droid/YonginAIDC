@@ -131,6 +131,14 @@ def _table_header() -> str:
 
 
 def render() -> None:
+    # v1.5+ QR 첫 스캔으로 PENDING → ASSIGNED 자동 전환된 경우 안내 (app.py에서 set)
+    just_assigned = st.session_state.pop("_qr_just_assigned", None)
+    if just_assigned:
+        st.toast(
+            f"QR 첫 스캔 인식 — {just_assigned} 가 ASSIGNED(부착 완료)로 전환되었습니다.",
+            icon="✅",
+        )
+
     notices = data.load_notices()
     notice_map = {n.notice_no: n for n in notices}
 

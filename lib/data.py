@@ -566,6 +566,24 @@ def update_equipment_location(equipment_id: str, spot: Spot) -> None:
     _equipment_rows.clear()
 
 
+def mark_qr_assigned(equipment_id: str) -> bool:
+    """장비의 qr_status를 PENDING이면 ASSIGNED로 전환. 이미 ASSIGNED면 no-op.
+
+    QR 첫 스캔(`?eq=...` 딥링크 진입) 시 호출 — "QR이 실제로 현장에 부착됐고
+    누군가 스캔에 성공했다"는 신호로 간주. 반환값은 실제 전환이 일어났는지 여부.
+    """
+    rows = _db().table("equipment").select("qr_status").eq(
+        "equipment_id", equipment_id
+    ).execute().data
+    if not rows or rows[0].get("qr_status") != "PENDING":
+        return False
+    _db().table("equipment").update(
+        {"qr_status": "ASSIGNED"}
+    ).eq("equipment_id", equipment_id).execute()
+    _equipment_rows.clear()
+    return True
+
+
 def set_equipment_inspection_types(equipment_id: str, types: list[str]) -> None:
     """장비의 적용 점검 유형을 갱신."""
     _db().table("equipment").update(

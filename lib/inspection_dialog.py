@@ -1492,7 +1492,7 @@ def equipment_dialog() -> None:
             category=category,  # type: ignore[arg-type]
             equipment_name=equipment_name.strip(),
             serial=serial.strip(),
-            qr_status="ASSIGNED",
+            qr_status="PENDING",  # v1.5+ 신규 등록은 부착 대기 — 첫 스캔 시 ASSIGNED 자동 전환
             last_inspection=None,
             health_status="DUE",
             floor=sel_spot.floor,

@@ -48,6 +48,15 @@ if eq_param and st.session_state.get("_last_eq_param") != eq_param:
     st.session_state["inspect_target"] = eq_param
     st.session_state["_open_inspect_dialog"] = True
     st.session_state["_last_eq_param"] = eq_param
+    # v1.5+ QR 부착 워크플로 — 첫 스캔이 곧 "실제 부착 완료" 신호
+    # PENDING 장비라면 ASSIGNED로 자동 전환 (이미 ASSIGNED면 no-op)
+    from lib import data as _data
+    try:
+        if _data.mark_qr_assigned(eq_param):
+            st.session_state["_qr_just_assigned"] = eq_param
+    except Exception:
+        # 잘못된 eq_param이거나 DB 에러여도 점검 흐름은 계속 진행
+        pass
 
 
 render_topbar(st.session_state["page"])
