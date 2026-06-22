@@ -38,8 +38,11 @@ def floor_legend_html() -> str:
     )
 
 
-def control_toggle(key: str, default_locked: bool = False) -> bool:
+def control_toggle(key: str, default_locked: bool = True) -> bool:
     """도면 위에 표시할 잠금/조작 토글. True=잠금, False=조작 가능.
+
+    기본값 True (잠금) — 사용자가 의도적으로 풀어야 도면 조작 가능. 의도치 않은
+    pan/zoom으로 viewport가 흐트러지는 것 방지.
 
     st.toggle 위젯 사용 — 클릭 시 streamlit이 ON/OFF UI를 즉시 전환하고
     같은 rerun에서 새 값을 반환. session_state에도 자동 저장(widget key 동일).

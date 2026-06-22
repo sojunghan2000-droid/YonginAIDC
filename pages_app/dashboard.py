@@ -265,7 +265,7 @@ def _floor_detail_dialog(floor: str) -> None:
         )
         ctrl_col, leg_col = st.columns([1.2, 5])
         with ctrl_col:
-            locked = control_toggle(f"floor_plan_{floor}", default_locked=False)
+            locked = control_toggle(f"floor_plan_{floor}", default_locked=True)
         with leg_col:
             st.markdown(floor_legend_html(), unsafe_allow_html=True)
         # CSS는 plotly_chart 전에 주입 — timing 안정성

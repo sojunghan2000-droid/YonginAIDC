@@ -230,7 +230,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
     # 컨트롤 토글 + 신규 위치 추가 토글 + 범례
     cc, ac, lc = st.columns([1.2, 1.6, 4])
     with cc:
-        locked = control_toggle(f"add_tsk_map_{round_id}", default_locked=False)
+        locked = control_toggle(f"add_tsk_map_{round_id}", default_locked=True)
     with ac:
         add_spot_mode_key = f"add_tsk_add_spot_mode_{round_id}"
         if add_spot_mode_key not in st.session_state:
@@ -916,7 +916,7 @@ def task_inspect_inline(task_id: str) -> None:
                     cc, lc = st.columns([1.2, 5])
                     with cc:
                         locked = control_toggle(
-                            f"tsk_loc_map_{task_id}", default_locked=False,
+                            f"tsk_loc_map_{task_id}", default_locked=True,
                         )
                     with lc:
                         st.markdown(floor_legend_html(), unsafe_allow_html=True)

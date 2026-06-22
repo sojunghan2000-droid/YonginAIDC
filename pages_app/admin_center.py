@@ -142,7 +142,7 @@ def _spot_edit_dialog(spot_id: str) -> None:
         )
         cc, lc = st.columns([1.2, 5])
         with cc:
-            locked = control_toggle(f"edit_map_{spot_id}", default_locked=False)
+            locked = control_toggle(f"edit_map_{spot_id}", default_locked=True)
         with lc:
             st.markdown(floor_legend_html(), unsafe_allow_html=True)
 
@@ -369,7 +369,7 @@ def _spot_define_dialog() -> None:
     # 도면 상단 컨트롤 토글 + 범례
     ctrl_col, leg_col = st.columns([1.2, 5])
     with ctrl_col:
-        locked = control_toggle(f"admin_dlg_{floor}", default_locked=False)
+        locked = control_toggle(f"admin_dlg_{floor}", default_locked=True)
     with leg_col:
         st.markdown(floor_legend_html(), unsafe_allow_html=True)
 
