@@ -199,14 +199,14 @@ def _spot_edit_dialog(spot_id: str) -> None:
             key=init_y_key,
         )
 
-    # 임시 spot인 경우 정식 전환 토글
+    # 신규 위치(임시 등록)인 경우 정식 전환 토글
     promote_to_regular = False
     if s.is_temporary:
         st.markdown(
             "<div style='background:#EFF6FF; border:1px solid #BFDBFE; "
             "border-radius:8px; padding:0.5rem 0.7rem; margin:0.3rem 0; "
             "color:#1E3A8A; font-size:0.86rem;'>"
-            "🆕 이 spot은 점검자가 현장에서 임시 등록했습니다. "
+            "🆕 이 spot은 점검자가 현장에서 신규 등록(검증 대기)했습니다. "
             "방이름·좌표를 확인하고 정식 전환하세요."
             "</div>",
             unsafe_allow_html=True,
@@ -241,7 +241,7 @@ def _spot_edit_dialog(spot_id: str) -> None:
             )
             msg = f"{s.spot_id} 속성 저장 완료."
             if s.is_temporary and not new_is_temp:
-                msg += " (임시 → 정식 전환됨)"
+                msg += " (신규 → 정식 전환됨)"
             if n_synced:
                 msg += f" 매핑 장비 {n_synced}건의 위치 정보도 동기화."
             st.session_state["admin_spot_save_msg"] = msg
@@ -511,7 +511,7 @@ def _spot_master_tab() -> None:
         in_use = s.spot_id in used
         temp_badge = (
             " <span style='background:#DBEAFE; color:#1E3A8A; padding:0.05rem 0.4rem; "
-            "border-radius:6px; font-size:0.68rem; font-weight:700;'>임시</span>"
+            "border-radius:6px; font-size:0.68rem; font-weight:700;'>신규</span>"
             if s.is_temporary else ""
         )
         row[0].markdown(

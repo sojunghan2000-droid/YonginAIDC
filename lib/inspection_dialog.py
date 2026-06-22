@@ -227,7 +227,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         key=f"add_tsk_map_floor_{round_id}",
     )
 
-    # 컨트롤 토글 + 임시 위치 추가 토글 + 범례
+    # 컨트롤 토글 + 신규 위치 추가 토글 + 범례
     cc, ac, lc = st.columns([1.2, 1.6, 4])
     with cc:
         locked = control_toggle(f"add_tsk_map_{round_id}", default_locked=False)
@@ -236,10 +236,10 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         if add_spot_mode_key not in st.session_state:
             st.session_state[add_spot_mode_key] = False
         add_spot_mode = st.toggle(
-            "🆕 임시 위치 추가",
+            "🆕 신규 위치 추가",
             value=st.session_state[add_spot_mode_key],
             key=add_spot_mode_key,
-            help="ON 시 도면 빈 곳 클릭으로 임시 spot 좌표 픽업 (기본 OFF)",
+            help="ON 시 도면 빈 곳 클릭으로 신규 위치 좌표 픽업 (기본 OFF)",
         )
     with lc:
         st.markdown(floor_legend_html(), unsafe_allow_html=True)
@@ -341,12 +341,13 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                 hoverinfo="text",
             ))
 
-    # 빈 spot / 임시 spot — 다이아 마커
+    # 빈 spot / 신규 위치(임시 등록) — 다이아 마커
     used_spot_ids = {e.spot_id for e in all_eq if e.spot_id and e.floor == floor}
     already_empty_spot_ids = {
         t.equipment_label.split(" - ")[0]
         for t in data.tasks_of_round(round_id, include_excluded=True)
-        if "(빈 spot)" in t.equipment_label or "(임시 spot)" in t.equipment_label
+        if "(빈 spot)" in t.equipment_label or "(신규 위치)" in t.equipment_label
+           or "(임시 spot)" in t.equipment_label  # 구 데이터 호환
     }
     empty_spots = [
         s for s in floor_spots
@@ -383,7 +384,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
             xs.append(sp.x_pct / 100 * FIG_W)
             ys.append(FIG_H - sp.y_pct / 100 * FIG_H)
             in_round = sp.spot_id in already_empty_spot_ids
-            txts.append("임시·포함" if in_round else "임시")
+            txts.append("신규·포함" if in_round else "신규")
             custom.append(("spot", sp.spot_id, sp.room_name, in_round))
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="markers+text",
@@ -394,13 +395,13 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                         symbol="diamond-open"),
             customdata=custom,
             hovertemplate=(
-                "<b>%{customdata[2]}</b> (임시 spot)<br>"
+                "<b>%{customdata[2]}</b> (신규 위치)<br>"
                 "%{customdata[1]} · 관리자 검증 대기<extra></extra>"
             ),
-            name="임시 spot", showlegend=False,
+            name="신규 위치", showlegend=False,
         ))
 
-    # 임시 위치 추가 모드 ON일 때만 클릭 가능 격자 추가
+    # 신규 위치 추가 모드 ON일 때만 클릭 가능 격자 추가
     if add_spot_mode:
         grid_x, grid_y = [], []
         for i in range(50):
@@ -416,7 +417,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                 line=dict(width=0),
             ),
             customdata=[("grid",)] * len(grid_x),
-            hovertemplate="여기 클릭 → 임시 spot 좌표 픽업<extra></extra>",
+            hovertemplate="여기 클릭 → 신규 위치 좌표 픽업<extra></extra>",
             showlegend=False,
             name="grid",
         ))
@@ -443,7 +444,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         key=f"add_tsk_map_chart_{round_id}_{floor}",
     )
 
-    # 클릭 → 후보 장비 / 빈 spot / 임시 spot / 격자(빈 곳) 분기
+    # 클릭 → 후보 장비 / 빈 spot / 신규 위치 / 격자(빈 곳) 분기
     pending_grid_key = f"add_tsk_pending_grid_{round_id}_{floor}"
     if (not locked and event and getattr(event, "selection", None)
             and getattr(event.selection, "points", None)):
@@ -462,7 +463,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                         (s for s in floor_spots if s.spot_id == spot_id), None
                     )
                     if sel_spot:
-                        label = "임시 spot" if sel_spot.is_temporary else "빈 spot"
+                        label = "신규 위치" if sel_spot.is_temporary else "빈 spot"
                         st.success(
                             f"선택: **{sel_spot.spot_id}** · {sel_spot.room_name} "
                             f"({label})"
@@ -470,7 +471,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                         st.session_state.pop(pending_grid_key, None)
                         return {"type": "empty_spot", "data": sel_spot}
             elif kind == "grid":
-                # 빈 곳 클릭 — 임시 spot 좌표 픽업
+                # 빈 곳 클릭 — 신규 위치 좌표 픽업
                 x_pct = round(pt["x"] / FIG_W * 100, 2)
                 y_pct = round((FIG_H - pt["y"]) / FIG_H * 100, 2)
                 st.session_state[pending_grid_key] = (x_pct, y_pct)
@@ -489,19 +490,19 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
                     return {"type": "equipment", "data": picked}
                 st.warning(f"{eq_id}는 이미 회차에 포함된 장비입니다.")
 
-    # 임시 spot 추가 폼 — 빈 곳 클릭으로 좌표 픽업된 상태일 때 노출
+    # 신규 위치 추가 폼 — 빈 곳 클릭으로 좌표 픽업된 상태일 때 노출
     pending = st.session_state.get(pending_grid_key)
     if pending:
         x_pct, y_pct = pending
         st.markdown(
             f"<div style='background:#EFF6FF; border:1px solid #BFDBFE; "
             f"border-radius:8px; padding:0.6rem 0.8rem; margin-top:0.3rem;'>"
-            f"<b style='color:#1E3A8A;'>🆕 임시 spot 위치 픽업됨</b> · "
+            f"<b style='color:#1E3A8A;'>🆕 신규 위치 픽업됨</b> · "
             f"좌표 ({x_pct}, {y_pct}) · 다음 spot ID: "
             f"<code>{data.next_spot_id(floor)}</code><br>"
             f"<span style='color:#475569; font-size:0.84rem;'>"
-            f"위치 설명을 입력하고 [임시 spot + Task 추가]를 누르면 "
-            f"임시 spot이 생성되고 Task도 함께 등록됩니다. "
+            f"위치 설명을 입력하고 [신규 위치 + Task 추가]를 누르면 "
+            f"신규 위치가 생성되고 Task도 함께 등록됩니다. "
             f"관리자가 위치 마스터에서 검증 후 정식 전환합니다.</span>"
             f"</div>",
             unsafe_allow_html=True,
@@ -514,7 +515,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
         bcols = st.columns([1, 1])
         with bcols[0]:
             if st.button(
-                "임시 spot + Task 추가",
+                "신규 위치 + Task 추가",
                 type="primary", use_container_width=True,
                 key=f"add_tsk_temp_submit_{round_id}",
                 disabled=not desc.strip(),
@@ -542,14 +543,14 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
 
     if add_spot_mode:
         st.caption(
-            "🆕 임시 위치 추가 모드 — 도면 빈 곳 클릭으로 좌표 픽업. "
+            "🆕 신규 위치 추가 모드 — 도면 빈 곳 클릭으로 좌표 픽업. "
             "마커 클릭은 기존 장비/spot 선택."
         )
     else:
         st.caption(
             "🔵 파란 원 = 매칭 장비 · ⚪ 옅은 회색 원 = 매핑 외(자유 추가) · "
-            "⚫ 진회색 = 이미 포함 · ◇ 회색 다이아 = 빈 spot · 🔷 파란 다이아 = 임시 spot · "
-            "임시 위치를 새로 만들려면 상단 토글 활성화"
+            "⚫ 진회색 = 이미 포함 · ◇ 회색 다이아 = 빈 spot · 🔷 파란 다이아 = 신규 위치 · "
+            "신규 위치를 새로 만들려면 상단 토글 활성화"
         )
     return None
 
@@ -688,7 +689,7 @@ def add_task_to_round_dialog(round_id: str) -> None:
         if sel_empty_spot is not None:
             # spot 기반 — 장비 없이 spot 정보만 사용 (임시/정식 구분)
             spot_tag = (
-                "(임시 spot)" if sel_empty_spot.is_temporary else "(빈 spot)"
+                "(신규 위치)" if sel_empty_spot.is_temporary else "(빈 spot)"
             )
             equipment_label = (
                 f"{sel_empty_spot.spot_id} - {sel_empty_spot.room_name} {spot_tag}"
