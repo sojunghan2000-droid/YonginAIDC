@@ -469,8 +469,8 @@ def render() -> None:
                 days_left = (r.due_date - today).days
                 day_txt = "오늘 마감" if days_left == 0 else f"D-{days_left}"
                 badges = (
-                    f" <span style='background:#FEF3C7; color:#92400E; "
-                    f"border:1px solid #F59E0B; padding:0.1rem 0.4rem; "
+                    f" <span style='background:#FFEDD5; color:#9A3412; "
+                    f"border:1px solid #F97316; padding:0.1rem 0.4rem; "
                     f"border-radius:6px; font-size:0.7rem; font-weight:700; "
                     f"margin-left:0.3rem;'>임박 · {day_txt}</span>"
                 )
