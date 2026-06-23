@@ -882,7 +882,7 @@ def render_sidebar(active: str) -> str:
             """
             <div class="ps-sb-foot sidebar-foot">
                 Settings · Support<br>
-                v0.1 · 2026-05-27
+                v1.5+ · 2026-06-23
             </div>
             """,
             unsafe_allow_html=True,
