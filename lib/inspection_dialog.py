@@ -562,7 +562,7 @@ def _add_task_map_picker(round_id: str, candidates, all_eq, already_locs):
 @st.dialog("회차에 Task 추가", width="large")
 def add_task_to_round_dialog(round_id: str) -> None:
     """v1.5 자유 점검 회차에 Task 1건 동적 추가.
-    진입 방식 — 직접 선택 / QR 스캔 / 📍 도면 선택 3가지."""
+    진입 방식 — 장비 선택(QR+목록 통합) / 📍 도면 선택 2가지 (v1.7)."""
     r = data.get_round(round_id)
     if not r:
         st.error("회차를 찾을 수 없습니다.")
@@ -596,30 +596,25 @@ def add_task_to_round_dialog(round_id: str) -> None:
                  if e.location_id not in already_locs and not _is_match(e)]
     candidates = matched + unmatched  # 매칭 우선 정렬
 
-    # 진입 방식 — 직접 선택 / QR 스캔 / 📍 도면 선택
-    # v1.7: 화기작업 구간은 별도 탭 없이 '도면 선택 → 신규 위치'로 통합 (탭 중복 제거)
-    tab_pick, tab_qr, tab_map = st.tabs(["직접 선택", "QR 스캔", "📍 도면 선택"])
+    # 진입 방식 — 장비 선택(사전 위치 설정됨) / 📍 도면 선택
+    # v1.7: '직접 선택'과 'QR 스캔'은 둘 다 등록 장비를 고르는 동일 흐름이라 한 탭으로 통합.
+    #        화기작업 구간은 별도 탭 없이 '도면 선택 → 신규 위치'로 통합 (탭 중복 제거)
+    tab_eq, tab_map = st.tabs(["장비 선택 (사전 위치 설정됨)", "📍 도면 선택"])
     sel_eq = None        # Equipment (장비 기반 추가)
     sel_empty_spot = None  # Spot (빈 spot 기반 추가)
-    with tab_pick:
-        eq_idx = st.selectbox(
-            "추가할 장비 (매칭 우선 · 매핑 외 장비도 자유 추가 가능)",
-            options=range(len(candidates)),
-            format_func=lambda i: (
-                f"{'✓' if _is_match(candidates[i]) else '·'} "
-                f"{candidates[i].location_id} · {candidates[i].equipment_name} "
-                f"({candidates[i].category})"
-            ),
-            key=f"add_tsk_eq_{round_id}",
+    with tab_eq:
+        st.caption(
+            "등록된 장비를 **QR 스캔** 또는 **목록**에서 선택합니다. "
+            "장비의 층·구역은 이미 설정되어 있어 자동 반영됩니다."
         )
-        sel_eq = candidates[eq_idx]
-    with tab_qr:
-        st.caption("장비에 부착된 QR을 카메라로 비추면 해당 장비가 자동 선택됩니다.")
+
+        # 1) QR 스캔 (모바일 우선)
+        st.markdown("**① QR 스캔** (선택)")
         try:
             from streamlit_qrcode_scanner import qrcode_scanner
             qr_val = qrcode_scanner(key=f"add_tsk_qr_{round_id}")
         except Exception as e:
-            st.error(f"QR 스캐너를 불러올 수 없습니다 ({e}). 직접 선택 탭을 이용해 주세요.")
+            st.caption(f"QR 스캐너를 불러올 수 없습니다 ({e}). 아래 목록에서 선택하세요.")
             qr_val = None
         manual = st.text_input(
             "수동 입력 (EQ-NNNN 또는 QR 페이로드 URL)",
@@ -640,13 +635,31 @@ def add_task_to_round_dialog(round_id: str) -> None:
             return m.group(0) if m else None
 
         eq_id = _extract(qr_val) or _extract(manual)
+
+        st.divider()
+
+        # 2) 목록에서 직접 선택 (QR 미인식 시 기본 경로)
+        st.markdown("**② 목록에서 선택**")
+        eq_idx = st.selectbox(
+            "추가할 장비 (매칭 우선 · 매핑 외 장비도 자유 추가 가능)",
+            options=range(len(candidates)),
+            format_func=lambda i: (
+                f"{'✓' if _is_match(candidates[i]) else '·'} "
+                f"{candidates[i].location_id} · {candidates[i].equipment_name} "
+                f"({candidates[i].category})"
+            ),
+            key=f"add_tsk_eq_{round_id}",
+        )
+        sel_eq = candidates[eq_idx] if candidates else None
+
+        # QR/수동 인식 시 목록 선택보다 우선 적용
         if eq_id:
             matched = next((c for c in candidates if c.equipment_id == eq_id), None)
             if matched:
                 sel_eq = matched
                 st.success(
-                    f"인식: {matched.equipment_id} · {matched.equipment_name} "
-                    f"({matched.location_id})"
+                    f"QR 인식: {matched.equipment_id} · {matched.equipment_name} "
+                    f"({matched.location_id}) — 이 장비로 추가됩니다."
                 )
             else:
                 # 회차 후보에는 없지만 전체 장비에 있는 경우
